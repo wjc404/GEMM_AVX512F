@@ -1,4 +1,3 @@
-﻿//zmm0-zmm7 for temp; zmm8-zmm31 for accumulators.
 # include "../gemm_set_parameters.h"
 # define A0      %rdi //ablk pointer
 # define B0      %rsi //bblk pointer
@@ -127,16 +126,36 @@
 .endm
 
 # if GEMM_UNROLL_M_VEC == 2
- # include "gemm_kernel_unroll2.S"
+ # if GEMM_NUM_ACCUMULATORS == 24
+  # include "gemm_kernel_unroll2_acc24.S"
+ # endif
+ # if GEMM_NUM_ACCUMULATORS == 12
+  # include "gemm_kernel_unroll2_acc12.S"
+ # endif
 # endif
 # if GEMM_UNROLL_M_VEC == 3
- # include "gemm_kernel_unroll3.S"
+ # if GEMM_NUM_ACCUMULATORS == 24
+  # include "gemm_kernel_unroll3_acc24.S"
+ # endif
+ # if GEMM_NUM_ACCUMULATORS == 12
+  # include "gemm_kernel_unroll3_acc12.S"
+ # endif
 # endif
 # if GEMM_UNROLL_M_VEC == 4
- # include "gemm_kernel_unroll4.S"
+ # if GEMM_NUM_ACCUMULATORS == 24
+  # include "gemm_kernel_unroll4_acc24.S"
+ # endif
+ # if GEMM_NUM_ACCUMULATORS == 12
+  # include "gemm_kernel_unroll4_acc12.S"
+ # endif
 # endif
 # if GEMM_UNROLL_M_VEC == 6
- # include "gemm_kernel_unroll6.S"
+ # if GEMM_NUM_ACCUMULATORS == 24
+  # include "gemm_kernel_unroll6_acc24.S"
+ # endif
+ # if GEMM_NUM_ACCUMULATORS == 12
+  # include "gemm_kernel_unroll6_acc12.S"
+ # endif
 # endif
 
 .section .text
@@ -282,48 +301,56 @@ unit_gemmblktailccc:
     pop %r15
     retq
 
-.macro PREF_C_1col pref_c_offset
-    PREF_1_col prefetcht0,CS
-    prefetcht2 (CS,\pref_c_offset,1)
+.macro PREF_C_1col pref_c_offset,c_addr_reg
+    PREF_1_col prefetcht0,\c_addr_reg
+    prefetcht2 (\c_addr_reg,\pref_c_offset,1)
 .endm
 
 .macro PREF_C_ncol pref_c_offset
-    PREF_1_col prefetcht0,CL
-    prefetcht2 (CL,\pref_c_offset,1)
+    PREF_C_1col \pref_c_offset,CL
     addq LDC,CL
-    PREF_1_col prefetcht0,CL
-    prefetcht2 (CL,\pref_c_offset,1)
+    PREF_C_1col \pref_c_offset,CL
     addq LDC,CL
-    PREF_1_col prefetcht0,CL
-    prefetcht2 (CL,\pref_c_offset,1)
+# if GEMM_UNROLL_N > 2
+    PREF_C_1col \pref_c_offset,CL
     addq LDC,CL
-    PREF_1_col prefetcht0,CL
-    prefetcht2 (CL,\pref_c_offset,1)
+# endif
+# if GEMM_UNROLL_N > 3
+    PREF_C_1col \pref_c_offset,CL
     addq LDC,CL
-    PREF_1_col prefetcht0,CL
-    prefetcht2 (CL,\pref_c_offset,1)
+# endif
+# if GEMM_UNROLL_N > 4
+    PREF_C_1col \pref_c_offset,CL
     addq LDC,CL
-    PREF_1_col prefetcht0,CL
-    prefetcht2 (CL,\pref_c_offset,1)
+# endif
+# if GEMM_UNROLL_N > 5
+    PREF_C_1col \pref_c_offset,CL
     addq LDC,CL
-    PREF_1_col prefetcht0,CL
-    prefetcht2 (CL,\pref_c_offset,1)
+# endif
+# if GEMM_UNROLL_N > 6
+    PREF_C_1col \pref_c_offset,CL
     addq LDC,CL
-    PREF_1_col prefetcht0,CL
-    prefetcht2 (CL,\pref_c_offset,1)
+# endif
+# if GEMM_UNROLL_N > 7
+    PREF_C_1col \pref_c_offset,CL
     addq LDC,CL
-    PREF_1_col prefetcht0,CL
-    prefetcht2 (CL,\pref_c_offset,1)
+# endif
+# if GEMM_UNROLL_N > 8
+    PREF_C_1col \pref_c_offset,CL
     addq LDC,CL
-    PREF_1_col prefetcht0,CL
-    prefetcht2 (CL,\pref_c_offset,1)
+# endif
+# if GEMM_UNROLL_N > 9
+    PREF_C_1col \pref_c_offset,CL
     addq LDC,CL
-    PREF_1_col prefetcht0,CL
-    prefetcht2 (CL,\pref_c_offset,1)
+# endif
+# if GEMM_UNROLL_N > 10
+    PREF_C_1col \pref_c_offset,CL
     addq LDC,CL
-    PREF_1_col prefetcht0,CL
-    prefetcht2 (CL,\pref_c_offset,1)
+# endif
+# if GEMM_UNROLL_N > 11
+    PREF_C_1col \pref_c_offset,CL
     addq LDC,CL
+# endif
 .endm
 
 //enter the function unit_gemmblkirregkccc, rdi=ablk, rsi=bblk, rdx=cstartpos, ecx=ldc, r8d=kdim, r9d=pref_c_offset(in bytes)
@@ -409,7 +436,7 @@ unit_gemmblkirregnccc:
 
 .Ledgen_1col_outer:
     ZERO_C_1col
-    PREF_C_1col %r9
+    PREF_C_1col %r9,CS
     xorq %r11,%r11
     movq AL,A0
 .Ledgen_1col_inner:
@@ -476,7 +503,7 @@ unit_gemmblkirregccc:
 
 .Ledge_1col_outer:
     ZERO_C_1col
-    PREF_C_1col %r9
+    PREF_C_1col %r9,CS
     xorq %r11,%r11
     movq AL,A0
 .Ledge_1col_inner:
