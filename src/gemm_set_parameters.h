@@ -17,7 +17,16 @@
 # if GEMM_UNROLL_M_VEC > 5
  # define GEMM_UNROLL_M_VEC 6
 # endif
-# define GEMM_UNROLL_N (24/GEMM_UNROLL_M_VEC) // The current implementation uses 24 ymm accumulators
+
+//GEMM_NUM_ACCUMULATORS: 12 or 24
+# if GEMM_NUM_ACCUMULATORS < 18
+ # define GEMM_NUM_ACCUMULATORS 12
+# endif
+# if GEMM_NUM_ACCUMULATORS > 17
+ # define GEMM_NUM_ACCUMULATORS 24
+# endif
+
+# define GEMM_UNROLL_N (GEMM_NUM_ACCUMULATORS/GEMM_UNROLL_M_VEC)
 
 //restrict other parameters
 # if GEMM_LOOP_TIMES_N < 2
@@ -37,8 +46,8 @@
 # endif
 
 //setting prefetch parameters, assuming 2x512bit FMA units per core
-# define A_PR_BYTE (PREF_CYCLES_PACKED_A*GEMM_UNROLL_M_VEC*64/12)
-# define B_PR_ELEM (PREF_CYCLES_PACKED_B*GEMM_UNROLL_N/12)
+# define A_PR_BYTE (PREF_CYCLES_PACKED_A*GEMM_UNROLL_M_VEC*64/(GEMM_NUM_ACCUMULATORS/2))
+# define B_PR_ELEM (PREF_CYCLES_PACKED_B*GEMM_UNROLL_N/(GEMM_NUM_ACCUMULATORS/2))
 
 //setting common block dimensions
 # define GEMM_BLOCK_DIM_N (GEMM_LOOP_TIMES_N*GEMM_UNROLL_N)
