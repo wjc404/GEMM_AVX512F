@@ -52,25 +52,30 @@ static void load_irregk_a_c(const FLOAT *astartpos,FLOAT *ablk,int lda,int kdim)
 static void load_irregk_a_r(const FLOAT *astartpos,FLOAT *ablk,int lda,int kdim){load_irreg_a_r(astartpos,ablk,lda,GEMM_BLOCK_DIM_M,kdim);}
 
 /* functions for packing B, a little complicated */
-static void load_reg_b_c(const FLOAT * __restrict__ bstartpos,FLOAT * __restrict__ bblk,int ldb,const FLOAT * __restrict__ alpha){
+static void unit_load_reg_b_c(const FLOAT * __restrict__ bstartpos,FLOAT * __restrict__ bblk,int ldb,const FLOAT * __restrict__ alpha){
   const FLOAT *inb[GEMM_UNROLL_N];FLOAT *outb;const FLOAT ALPHA=*alpha;
-  int bcol,brow,bsub0,bsub1,bsub2;
+  int bcol,brow,bsub1,bsub2;
   outb=bblk;
-  for(bsub0=0;bsub0<GEMM_UNROLL_M_VEC;bsub0++){
-    inb[0]=bstartpos+GEMM_BLOCK_L1DIM_K*bsub0;
-    for(bsub1=1;bsub1<GEMM_UNROLL_N;bsub1++) inb[bsub1]=inb[bsub1-1]+ldb;
-/* initialization complete, start packing */
-    for(bcol=0;bcol<GEMM_LOOP_TIMES_N;bcol++){
-      for(bsub1=GEMM_UNROLL_N-1;bsub1>=0;bsub1--){
-        for(brow=0;brow<GEMM_LOOP_TIMES_K*4;brow++){
-          for(bsub2=0;bsub2<GEMM_UNROLL_N;bsub2++){outb[bsub2]=(*inb[bsub2])*ALPHA;inb[bsub2]++;}
-          outb+=GEMM_UNROLL_N;
-        }
-        for(bsub2=0;bsub2<GEMM_UNROLL_N;bsub2++) inb[bsub2]+=ldb;
-        if(bsub1==0) for(bsub2=0;bsub2<GEMM_UNROLL_N;bsub2++) inb[bsub2]-=GEMM_BLOCK_L1DIM_K;
-        else inb[bsub1]-=(bcol==GEMM_LOOP_TIMES_N-1)*(ldb*GEMM_BLOCK_DIM_N);
+  inb[0]=bstartpos;
+  for(bsub1=1;bsub1<GEMM_UNROLL_N;bsub1++) inb[bsub1]=inb[bsub1-1]+ldb;
+  for(bcol=0;bcol<GEMM_LOOP_TIMES_N;bcol++){
+    for(bsub1=GEMM_UNROLL_N-1;bsub1>=0;bsub1--){
+      for(brow=0;brow<GEMM_LOOP_TIMES_K*4;brow++){
+        for(bsub2=0;bsub2<GEMM_UNROLL_N;bsub2++){outb[bsub2]=(*inb[bsub2])*ALPHA;inb[bsub2]++;}
+        outb+=GEMM_UNROLL_N;
       }
+      for(bsub2=0;bsub2<GEMM_UNROLL_N;bsub2++) inb[bsub2]+=ldb;
+      if(bsub1==0) for(bsub2=0;bsub2<GEMM_UNROLL_N;bsub2++) inb[bsub2]-=GEMM_BLOCK_L1DIM_K;
+      else inb[bsub1]-=(bcol==GEMM_LOOP_TIMES_N-1)*((int64_t)ldb*(int64_t)GEMM_BLOCK_DIM_N);
     }
+  }
+}
+static void load_reg_b_c(const FLOAT * __restrict__ bstartpos,FLOAT * __restrict__ bblk,int ldb,const FLOAT * __restrict__ alpha){
+  int cnt;const FLOAT *bread = bstartpos;FLOAT *bwrite = bblk;
+  for(cnt=0;cnt<GEMM_UNROLL_M_VEC;cnt++){
+    unit_load_reg_b_c(bread,bwrite,ldb,alpha);
+    bread += GEMM_BLOCK_L1DIM_K;
+    bwrite += GEMM_BLOCK_L1DIM_K * GEMM_BLOCK_DIM_N;
   }
 }
 #define bcopy_4row(num_of_columns) {\
@@ -81,32 +86,37 @@ static void load_reg_b_c(const FLOAT * __restrict__ bstartpos,FLOAT * __restrict
     bout[bsub2+3*GEMM_UNROLL_N]=(*bin4)*ALPHA;bin4++;\
   }\
 }
-static void load_reg_b_r(const FLOAT * __restrict__ bstartpos,FLOAT * __restrict__ bblk,int ldb,const FLOAT * __restrict__ alpha){
-  const FLOAT *bin1,*bin2,*bin3,*bin4;FLOAT *bout,*bhead;int bcol,brow,bsub0,bsub1,bsub2;const FLOAT ALPHA=*alpha;int bshift=4*ldb-GEMM_BLOCK_DIM_N;
+static void unit_load_reg_b_r(const FLOAT * __restrict__ bstartpos,FLOAT * __restrict__ bblk,int ldb,const FLOAT * __restrict__ alpha){
+  const FLOAT *bin1,*bin2,*bin3,*bin4;FLOAT *bout;int bcol,brow,bsub1,bsub2;const FLOAT ALPHA=*alpha;int64_t bshift=(int64_t)4*(int64_t)ldb-GEMM_BLOCK_DIM_N;
   bin1=bstartpos;bin2=bin1+ldb;bin3=bin2+ldb;bin4=bin3+ldb;
-  for(bsub0=0;bsub0<GEMM_UNROLL_M_VEC;bsub0++){
-    bhead=bblk+GEMM_BLOCK_L1DIM_K*GEMM_BLOCK_DIM_N*bsub0;
-    for(brow=0;brow<GEMM_LOOP_TIMES_K*4;brow+=4){
-      bout=bhead+brow*GEMM_UNROLL_N;
-      for(bcol=0;bcol<GEMM_LOOP_TIMES_N;bcol++){
+  for(brow=0;brow<GEMM_LOOP_TIMES_K*4;brow+=4){
+    bout=bblk+brow*GEMM_UNROLL_N;
+    for(bcol=0;bcol<GEMM_LOOP_TIMES_N;bcol++){
+      bcopy_4row(GEMM_UNROLL_N)
+      bout+=GEMM_UNROLL_N*GEMM_BLOCK_L1DIM_K;
+    }
+    bin1+=bshift;bin2+=bshift;bin3+=bshift;bin4+=bshift;
+  }
+  for(bsub1=GEMM_UNROLL_N-1;bsub1>0;bsub1--){
+    for(;brow<GEMM_LOOP_TIMES_K*4*(GEMM_UNROLL_N+1-bsub1);brow+=4){
+      bout=bblk+brow*GEMM_UNROLL_N+(GEMM_LOOP_TIMES_N-1)*GEMM_UNROLL_N*GEMM_BLOCK_L1DIM_K+bsub1;
+      bcopy_4row(GEMM_UNROLL_N-bsub1)
+      bout=bblk+brow*GEMM_UNROLL_N;
+      for(bcol=1;bcol<GEMM_LOOP_TIMES_N;bcol++){
         bcopy_4row(GEMM_UNROLL_N)
         bout+=GEMM_UNROLL_N*GEMM_BLOCK_L1DIM_K;
       }
+      bcopy_4row(bsub1)
       bin1+=bshift;bin2+=bshift;bin3+=bshift;bin4+=bshift;
     }
-    for(bsub1=GEMM_UNROLL_N-1;bsub1>0;bsub1--){
-      for(;brow<GEMM_LOOP_TIMES_K*4*(GEMM_UNROLL_N+1-bsub1);brow+=4){
-        bout=bhead+brow*GEMM_UNROLL_N+(GEMM_LOOP_TIMES_N-1)*GEMM_UNROLL_N*GEMM_BLOCK_L1DIM_K+bsub1;
-        bcopy_4row(GEMM_UNROLL_N-bsub1)
-        bout=bhead+brow*GEMM_UNROLL_N;
-        for(bcol=1;bcol<GEMM_LOOP_TIMES_N;bcol++){
-          bcopy_4row(GEMM_UNROLL_N)
-          bout+=GEMM_UNROLL_N*GEMM_BLOCK_L1DIM_K;
-        }
-        bcopy_4row(bsub1)
-        bin1+=bshift;bin2+=bshift;bin3+=bshift;bin4+=bshift;
-      }
-    }
+  }
+}
+static void load_reg_b_r(const FLOAT * __restrict__ bstartpos,FLOAT * __restrict__ bblk,int ldb,const FLOAT * __restrict__ alpha){
+  int cnt;const FLOAT *bread = bstartpos;FLOAT *bwrite = bblk;
+  for(cnt=0;cnt<GEMM_UNROLL_M_VEC;cnt++){
+    unit_load_reg_b_r(bread,bwrite,ldb,alpha);
+    bread += (int64_t)GEMM_BLOCK_L1DIM_K * (int64_t)ldb;
+    bwrite += GEMM_BLOCK_L1DIM_K * GEMM_BLOCK_DIM_N;
   }
 }
 static void sub_load_irreg_b_c(const FLOAT * __restrict__ bstartpos,FLOAT * __restrict__ bblk,int ldb,int ndim,int kdim,const FLOAT * __restrict__ alpha){//dense rearr(old) lazy mode
@@ -121,7 +131,7 @@ static void sub_load_irreg_b_c(const FLOAT * __restrict__ bstartpos,FLOAT * __re
         bin[bsub]++;bout++;
       }
     }
-    for(bsub=0;bsub<GEMM_UNROLL_N;bsub++) bin[bsub]+=GEMM_UNROLL_N*ldb-kdim;
+    for(bsub=0;bsub<GEMM_UNROLL_N;bsub++) bin[bsub]+=(int64_t)GEMM_UNROLL_N*(int64_t)ldb-(int64_t)kdim;
   }
   for(;bcol<ndim;bcol++){
     for(brow=0;brow<kdim;brow++){
@@ -150,15 +160,23 @@ static void load_irreg_b_c(const FLOAT * __restrict__ bstartpos,FLOAT * __restri
   int brow,subbr;
   for(brow=0;brow<kdim;brow+=GEMM_BLOCK_L1DIM_K){
     subbr=kdim-brow;
-    if(subbr>GEMM_BLOCK_L1DIM_K) subbr=GEMM_BLOCK_L1DIM_K;
-    sub_load_irreg_b_c(bstartpos+brow,bblk+brow*ndim,ldb,ndim,subbr,alpha);
+    if(subbr>=GEMM_BLOCK_L1DIM_K){
+      subbr=GEMM_BLOCK_L1DIM_K;
+      if(ndim==GEMM_BLOCK_DIM_N) unit_load_reg_b_c(bstartpos+brow,bblk+(int64_t)brow*(int64_t)ndim,ldb,alpha);
+      else sub_load_irreg_b_c(bstartpos+brow,bblk+(int64_t)brow*(int64_t)ndim,ldb,ndim,subbr,alpha);
+    }
+    else sub_load_irreg_b_c(bstartpos+brow,bblk+(int64_t)brow*(int64_t)ndim,ldb,ndim,subbr,alpha);
   }
 }
 static void load_irreg_b_r(const FLOAT * __restrict__ bstartpos,FLOAT * __restrict__ bblk,int ldb,int ndim,int kdim,const FLOAT * __restrict__ alpha){
   int brow,subbr;
   for(brow=0;brow<kdim;brow+=GEMM_BLOCK_L1DIM_K){
     subbr=kdim-brow;
-    if(subbr>GEMM_BLOCK_L1DIM_K) subbr=GEMM_BLOCK_L1DIM_K;
-    sub_load_irreg_b_r(bstartpos+brow*ldb,bblk+brow*ndim,ldb,ndim,subbr,alpha);
+    if(subbr>=GEMM_BLOCK_L1DIM_K){
+      subbr=GEMM_BLOCK_L1DIM_K;
+      if(ndim==GEMM_BLOCK_DIM_N) unit_load_reg_b_r(bstartpos+(int64_t)brow*(int64_t)ldb,bblk+(int64_t)brow*(int64_t)ndim,ldb,alpha);
+      else sub_load_irreg_b_r(bstartpos+(int64_t)brow*(int64_t)ldb,bblk+(int64_t)brow*(int64_t)ndim,ldb,ndim,subbr,alpha);
+    }
+    else sub_load_irreg_b_r(bstartpos+(int64_t)brow*(int64_t)ldb,bblk+(int64_t)brow*(int64_t)ndim,ldb,ndim,subbr,alpha);
   }
 }

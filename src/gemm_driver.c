@@ -81,7 +81,7 @@ static void GEMM_CALC_COLUMN(FLOAT *abuffer,FLOAT *bblk,FLOAT *cheadpos,int BLOC
   c_current_pos=cheadpos;
   abuffer_current_pos=abuffer;
   for(loop_counter=0;loop_counter<BLOCK_NUM_M-1;loop_counter++){
-    gemmblkregccc(abuffer_current_pos,bblk,c_current_pos,LDC);//SEGFAULT BUG HERE ___
+    gemmblkregccc(abuffer_current_pos,bblk,c_current_pos,LDC);
     c_current_pos+=GEMM_BLOCK_DIM_M;
     abuffer_current_pos+=GEMM_BLOCK_DIM_M*GEMM_BLOCK_DIM_K;
   }
@@ -93,8 +93,8 @@ static void GEMM_CALC_COLUMN_EDGE(FLOAT *abuffer,FLOAT *bblk,FLOAT *cheadpos,int
   c_current_pos=cheadpos;
   abuffer_current_pos=abuffer;
   for(loop_counter=0;loop_counter<BLOCK_NUM_M-1;loop_counter++){
-    if(kdim==GEMM_BLOCK_DIM_K)      gemmblkirregnccc(abuffer_current_pos,bblk,c_current_pos,LDC,ndim);
-    else if(ndim==GEMM_BLOCK_DIM_N) gemmblkirregkccc(abuffer_current_pos,bblk,c_current_pos,LDC,kdim);
+    if(ndim==GEMM_BLOCK_DIM_N)      gemmblkirregkccc(abuffer_current_pos,bblk,c_current_pos,LDC,kdim);
+    else if(kdim==GEMM_BLOCK_DIM_K) gemmblkirregnccc(abuffer_current_pos,bblk,c_current_pos,LDC,ndim);
     else                             gemmblkirregccc(abuffer_current_pos,bblk,c_current_pos,LDC,GEMM_BLOCK_DIM_M,ndim,kdim);
     c_current_pos+=GEMM_BLOCK_DIM_M;
     abuffer_current_pos+=GEMM_BLOCK_DIM_M*kdim;
