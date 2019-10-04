@@ -1,7 +1,7 @@
 # include <stdio.h>
 # include <stdlib.h>
 # include <sys/time.h>
-//gcc -fopenmp -mavx512f AVX512_CPUTEST.c -o AVX512_CPUTEST
+//gcc -mavx512f AVX512_CPUTEST.c -o AVX512_CPUTEST
 int main(){
   int64_t num_loops = 200000000;
   float float1 = 1.0,float2 = 2.0;
