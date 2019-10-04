@@ -57,7 +57,7 @@
  # define CPU_NUM_512FMA_UNITS 1
 # endif
 
-//setting prefetch parameters, assuming 2x512bit FMA units per core
+//setting prefetch parameters
 # define A_PR_BYTE (PREF_CYCLES_PACKED_A*64*CPU_NUM_512FMA_UNITS/GEMM_UNROLL_N)
 # define B_PR_ELEM (PREF_CYCLES_PACKED_B*CPU_NUM_512FMA_UNITS/GEMM_UNROLL_M_VEC)
 
