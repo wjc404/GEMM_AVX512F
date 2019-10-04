@@ -126,36 +126,16 @@
 .endm
 
 # if GEMM_UNROLL_M_VEC == 2
- # if GEMM_NUM_ACCUMULATORS == 24
-  # include "gemm_kernel_unroll2_acc24.S"
- # endif
- # if GEMM_NUM_ACCUMULATORS == 12
-  # include "gemm_kernel_unroll2_acc12.S"
- # endif
+ # include "gemm_kernel_unroll2.S"
 # endif
 # if GEMM_UNROLL_M_VEC == 3
- # if GEMM_NUM_ACCUMULATORS == 24
-  # include "gemm_kernel_unroll3_acc24.S"
- # endif
- # if GEMM_NUM_ACCUMULATORS == 12
-  # include "gemm_kernel_unroll3_acc12.S"
- # endif
+ # include "gemm_kernel_unroll3.S"
 # endif
 # if GEMM_UNROLL_M_VEC == 4
- # if GEMM_NUM_ACCUMULATORS == 24
-  # include "gemm_kernel_unroll4_acc24.S"
- # endif
- # if GEMM_NUM_ACCUMULATORS == 12
-  # include "gemm_kernel_unroll4_acc12.S"
- # endif
+ # include "gemm_kernel_unroll4.S"
 # endif
 # if GEMM_UNROLL_M_VEC == 6
- # if GEMM_NUM_ACCUMULATORS == 24
-  # include "gemm_kernel_unroll6_acc24.S"
- # endif
- # if GEMM_NUM_ACCUMULATORS == 12
-  # include "gemm_kernel_unroll6_acc12.S"
- # endif
+ # include "gemm_kernel_unroll6.S"
 # endif
 
 .section .text
