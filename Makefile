@@ -7,13 +7,16 @@ KERNEL_INCS = $(KERNEL_PREFIX)_wrapper.c $(KERNEL_PREFIX)_unroll*
 SRCFILE = $(KERNEL_PREFIX).S src/gemm_driver.c
 INCFILE = src/gemm_copy.c $(KERNEL_INCS)
 
-default: DGEMM.so SGEMM.so
+default: DGEMM.so SGEMM.so AVX512_CPUTEST
 
 DGEMM.so: $(SRCFILE) $(INCFILE) $(CONFIG_FILES)
 	$(CC) -DDOUBLE $(CCFLAGS) $(SRCFILE) -o $@
   
 SGEMM.so: $(SRCFILE) $(INCFILE) $(CONFIG_FILES)
 	$(CC) $(CCFLAGS) $(SRCFILE) -o $@
+
+AVX512_CPUTEST: AVX512_CPUTEST.c
+	$(CC) -mavx512f $^ -o $@
 
 clean:
 	rm -f *GEMM.so
