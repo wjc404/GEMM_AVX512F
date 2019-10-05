@@ -191,7 +191,9 @@ unit_gemmblkregccc:
 # if NEXT_A_PREF_STEP > 512
     prefetcht1 512(AL)
 # endif
+# ifndef NO_REPEAT_C_BLOCK
     prefetcht2 (CS,%r13,1)
+# endif
     xorq %r11,%r11
 .Linner_gemmblkregccc:
     KERNEL_4 %r9,%r8
@@ -283,7 +285,9 @@ unit_gemmblktailccc:
 
 .macro PREF_C_1col pref_c_offset,c_addr_reg
     PREF_1_col prefetcht0,\c_addr_reg
+# ifndef NO_REPEAT_C_BLOCK
     prefetcht2 (\c_addr_reg,\pref_c_offset,1)
+# endif
 .endm
 
 .macro PREF_C_ncol pref_c_offset

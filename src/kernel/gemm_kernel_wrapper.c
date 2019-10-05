@@ -7,22 +7,33 @@ extern void unit_gemmblkirregccc(FLOAT *abufferctpos,FLOAT *bblk,FLOAT *cstartpo
 
 /* wrapper caller functions */
 static void gemmblkregccc(FLOAT *abufferctpos,FLOAT *bblk,FLOAT *cstartpos,int ldc){
+# ifdef NO_REPEAT_C_BLOCK
+  unit_gemmblkregccc(abufferctpos,bblk,cstartpos,ldc,0);
+# else
   int cnt;FLOAT *acpos,*bcpos;
   for(cnt=0;cnt<GEMM_UNROLL_M_VEC;cnt++){
     acpos=abufferctpos+GEMM_BLOCK_L1DIM_K*GEMM_BLOCK_DIM_M*cnt;
     bcpos=bblk+GEMM_BLOCK_L1DIM_K*GEMM_BLOCK_DIM_N*cnt;
     unit_gemmblkregccc(acpos,bcpos,cstartpos,ldc,(cnt+GEMM_UNROLL_M_VEC+1)*64);
   }
+# endif
 }
 static void gemmblktailccc(FLOAT *abufferctpos,FLOAT *bblk,FLOAT *cstartpos,int ldc,int mdim){
+# ifdef NO_REPEAT_C_BLOCK
+  unit_gemmblktailccc(abufferctpos,bblk,cstartpos,ldc,mdim);
+# else
   int cnt;FLOAT *acpos,*bcpos;
   for(cnt=0;cnt<GEMM_UNROLL_M_VEC;cnt++){
     acpos=abufferctpos+GEMM_BLOCK_L1DIM_K*GEMM_BLOCK_DIM_M*cnt;
     bcpos=bblk+GEMM_BLOCK_L1DIM_K*GEMM_BLOCK_DIM_N*cnt;
     unit_gemmblktailccc(acpos,bcpos,cstartpos,ldc,mdim);
   }
+# endif
 }
 static void gemmblkirregkccc(FLOAT *abufferctpos,FLOAT *bblk,FLOAT *cstartpos,int ldc,int kdim){
+# ifdef NO_REPEAT_C_BLOCK
+  unit_gemmblkirregkccc(abufferctpos,bblk,cstartpos,ldc,kdim,0);
+# else
   int kcnt,subkdim;FLOAT *acpos,*bcpos;
   int prefpos=(GEMM_UNROLL_M_VEC+1)*64;
   for(kcnt=0;kcnt<kdim;kcnt+=GEMM_BLOCK_L1DIM_K){
@@ -36,18 +47,27 @@ static void gemmblkirregkccc(FLOAT *abufferctpos,FLOAT *bblk,FLOAT *cstartpos,in
     else unit_gemmblkirregkccc(acpos,bcpos,cstartpos,ldc,subkdim,prefpos);
     prefpos+=64;
   }
+# endif
 }
 static void gemmblkirregnccc(FLOAT *abufferctpos,FLOAT *bblk,FLOAT *cstartpos,int ldc,int ndim){
+# ifdef NO_REPEAT_C_BLOCK
+  unit_gemmblkirregnccc(abufferctpos,bblk,cstartpos,ldc,ndim,0);
+# else
   int cnt;FLOAT *acpos,*bcpos;
   for(cnt=0;cnt<GEMM_UNROLL_M_VEC;cnt++){
     acpos=abufferctpos+GEMM_BLOCK_L1DIM_K*GEMM_BLOCK_DIM_M*cnt;
     bcpos=bblk+GEMM_BLOCK_L1DIM_K*ndim*cnt;
     unit_gemmblkirregnccc(acpos,bcpos,cstartpos,ldc,ndim,(cnt+GEMM_UNROLL_M_VEC+1)*64);
   }
+# endif
 }
 static void gemmblkirregccc(FLOAT *abufferctpos,FLOAT *bblk,FLOAT *cstartpos,int ldc,int mdim,int ndim,int kdim){
-  int kcnt,subkdim;FLOAT *acpos,*bcpos;int64_t dim3[3];
-  dim3[0]=(int64_t)mdim;dim3[1]=(int64_t)ndim;
+  int64_t dim3[3];dim3[0]=(int64_t)mdim;dim3[1]=(int64_t)ndim;
+# ifdef NO_REPEAT_C_BLOCK
+  dim3[2]=(int64_t)kdim;
+  unit_gemmblkirregccc(abufferctpos,bblk,cstartpos,ldc,dim3,0);
+# else
+  int kcnt,subkdim;FLOAT *acpos,*bcpos;
   int prefpos=(GEMM_UNROLL_M_VEC+1)*64;
   for(kcnt=0;kcnt<kdim;kcnt+=GEMM_BLOCK_L1DIM_K){
     subkdim=kdim-kcnt;
@@ -59,5 +79,6 @@ static void gemmblkirregccc(FLOAT *abufferctpos,FLOAT *bblk,FLOAT *cstartpos,int
     else unit_gemmblkirregccc(acpos,bcpos,cstartpos,ldc,dim3,prefpos);
     prefpos+=64;
   }
+# endif
 }
 
