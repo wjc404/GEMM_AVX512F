@@ -71,12 +71,16 @@ static void unit_load_reg_b_c(const FLOAT * __restrict__ bstartpos,FLOAT * __res
   }
 }
 static void load_reg_b_c(const FLOAT * __restrict__ bstartpos,FLOAT * __restrict__ bblk,int ldb,const FLOAT * __restrict__ alpha){
+# ifdef NO_REPEAT_C_BLOCK
+  unit_load_reg_b_c(bstartpos,bblk,ldb,alpha);
+# else
   int cnt;const FLOAT *bread = bstartpos;FLOAT *bwrite = bblk;
   for(cnt=0;cnt<GEMM_UNROLL_M_VEC;cnt++){
     unit_load_reg_b_c(bread,bwrite,ldb,alpha);
     bread += GEMM_BLOCK_L1DIM_K;
     bwrite += GEMM_BLOCK_L1DIM_K * GEMM_BLOCK_DIM_N;
   }
+# endif
 }
 #define bcopy_4row(num_of_columns) {\
   for(bsub2=0;bsub2<num_of_columns;bsub2++){\
@@ -112,12 +116,16 @@ static void unit_load_reg_b_r(const FLOAT * __restrict__ bstartpos,FLOAT * __res
   }
 }
 static void load_reg_b_r(const FLOAT * __restrict__ bstartpos,FLOAT * __restrict__ bblk,int ldb,const FLOAT * __restrict__ alpha){
+# ifdef NO_REPEAT_C_BLOCK
+  unit_load_reg_b_r(bstartpos,bblk,ldb,alpha);
+# else
   int cnt;const FLOAT *bread = bstartpos;FLOAT *bwrite = bblk;
   for(cnt=0;cnt<GEMM_UNROLL_M_VEC;cnt++){
     unit_load_reg_b_r(bread,bwrite,ldb,alpha);
     bread += (int64_t)GEMM_BLOCK_L1DIM_K * (int64_t)ldb;
     bwrite += GEMM_BLOCK_L1DIM_K * GEMM_BLOCK_DIM_N;
   }
+# endif
 }
 static void sub_load_irreg_b_c(const FLOAT * __restrict__ bstartpos,FLOAT * __restrict__ bblk,int ldb,int ndim,int kdim,const FLOAT * __restrict__ alpha){//dense rearr(old) lazy mode
   const FLOAT *bin[GEMM_UNROLL_N];FLOAT *bout;int bcol,brow,bsub;const FLOAT ALPHA=*alpha;
@@ -157,6 +165,9 @@ static void sub_load_irreg_b_r(const FLOAT * __restrict__ bstartpos,FLOAT * __re
   }
 }
 static void load_irreg_b_c(const FLOAT * __restrict__ bstartpos,FLOAT * __restrict__ bblk,int ldb,int ndim,int kdim,const FLOAT * __restrict__ alpha){
+# ifdef NO_REPEAT_C_BLOCK
+  sub_load_irreg_b_c(bstartpos,bblk,ldb,ndim,kdim,alpha);
+# else
   int brow,subbr;
   for(brow=0;brow<kdim;brow+=GEMM_BLOCK_L1DIM_K){
     subbr=kdim-brow;
@@ -167,8 +178,12 @@ static void load_irreg_b_c(const FLOAT * __restrict__ bstartpos,FLOAT * __restri
     }
     else sub_load_irreg_b_c(bstartpos+brow,bblk+(int64_t)brow*(int64_t)ndim,ldb,ndim,subbr,alpha);
   }
+# endif
 }
 static void load_irreg_b_r(const FLOAT * __restrict__ bstartpos,FLOAT * __restrict__ bblk,int ldb,int ndim,int kdim,const FLOAT * __restrict__ alpha){
+# ifdef NO_REPEAT_C_BLOCK
+  sub_load_irreg_b_r(bstartpos,bblk,ldb,ndim,kdim,alpha);
+# else
   int brow,subbr;
   for(brow=0;brow<kdim;brow+=GEMM_BLOCK_L1DIM_K){
     subbr=kdim-brow;
@@ -179,4 +194,5 @@ static void load_irreg_b_r(const FLOAT * __restrict__ bstartpos,FLOAT * __restri
     }
     else sub_load_irreg_b_r(bstartpos+(int64_t)brow*(int64_t)ldb,bblk+(int64_t)brow*(int64_t)ndim,ldb,ndim,subbr,alpha);
   }
+# endif
 }

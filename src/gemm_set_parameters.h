@@ -64,7 +64,11 @@
 //setting common block dimensions
 # define GEMM_BLOCK_DIM_N (GEMM_LOOP_TIMES_N*GEMM_UNROLL_N)
 # define GEMM_BLOCK_L1DIM_K (GEMM_LOOP_TIMES_K*4*GEMM_UNROLL_N) //GEMM_UNROLL_LOOP_K = 4 in current implementation
-# define GEMM_BLOCK_DIM_K (GEMM_BLOCK_L1DIM_K*GEMM_UNROLL_M_VEC)
+# ifdef NO_REPEAT_C_BLOCK
+ # define GEMM_BLOCK_DIM_K GEMM_BLOCK_L1DIM_K
+# else
+ # define GEMM_BLOCK_DIM_K (GEMM_BLOCK_L1DIM_K*GEMM_UNROLL_M_VEC)
+# endif
 # ifdef DOUBLE
  # define GEMM_BLOCK_DIM_M (8*GEMM_UNROLL_M_VEC) //8 double elements per avx512 vector
 # else
