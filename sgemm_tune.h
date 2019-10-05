@@ -6,6 +6,7 @@
 
 /* here is an example */
 # define CPU_NUM_512FMA_UNITS 2 //how many 512-bit fma execution units per CPU core ?
+//# define NO_REPEAT_C_BLOCK //if the memory bandwidth is not a problem, calculation on every blocked C matrix is not repeated.
 # define GEMM_UNROLL_M_VEC 2 // 2,3,4 or 6
 # define GEMM_UNROLL_N 6
 # define GEMM_LOOP_TIMES_N 64
