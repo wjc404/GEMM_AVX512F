@@ -60,7 +60,7 @@ static void unit_load_reg_b_c(const FLOAT * __restrict__ bstartpos,FLOAT * __res
   for(bsub1=1;bsub1<GEMM_UNROLL_N;bsub1++) inb[bsub1]=inb[bsub1-1]+ldb;
   for(bcol=0;bcol<GEMM_LOOP_TIMES_N;bcol++){
     for(bsub1=GEMM_UNROLL_N-1;bsub1>=0;bsub1--){
-      for(brow=0;brow<GEMM_LOOP_TIMES_K*4;brow++){
+      for(brow=0;brow<GEMM_LOOP_TIMES_K*GEMM_UNROLL_K;brow++){
         for(bsub2=0;bsub2<GEMM_UNROLL_N;bsub2++){outb[bsub2]=(*inb[bsub2])*ALPHA;inb[bsub2]++;}
         outb+=GEMM_UNROLL_N;
       }
@@ -82,36 +82,37 @@ static void load_reg_b_c(const FLOAT * __restrict__ bstartpos,FLOAT * __restrict
   }
 # endif
 }
-#define bcopy_4row(num_of_columns) {\
+#define bcopy_ukrow(num_of_columns) {\
   for(bsub2=0;bsub2<num_of_columns;bsub2++){\
-    bout[bsub2+0*GEMM_UNROLL_N]=(*bin1)*ALPHA;bin1++;\
-    bout[bsub2+1*GEMM_UNROLL_N]=(*bin2)*ALPHA;bin2++;\
-    bout[bsub2+2*GEMM_UNROLL_N]=(*bin3)*ALPHA;bin3++;\
-    bout[bsub2+3*GEMM_UNROLL_N]=(*bin4)*ALPHA;bin4++;\
+    for(bsub3=0;bsub3<GEMM_UNROLL_K;bsub3++){\
+      bout[bsub2+bsub3*GEMM_UNROLL_N]=(*bin[bsub3])*ALPHA;bin[bsub3]++;\
+    }\
   }\
 }
 static void unit_load_reg_b_r(const FLOAT * __restrict__ bstartpos,FLOAT * __restrict__ bblk,int ldb,const FLOAT * __restrict__ alpha){
-  const FLOAT *bin1,*bin2,*bin3,*bin4;FLOAT *bout;int bcol,brow,bsub1,bsub2;const FLOAT ALPHA=*alpha;int64_t bshift=(int64_t)4*(int64_t)ldb-GEMM_BLOCK_DIM_N;
-  bin1=bstartpos;bin2=bin1+ldb;bin3=bin2+ldb;bin4=bin3+ldb;
-  for(brow=0;brow<GEMM_LOOP_TIMES_K*4;brow+=4){
+  const FLOAT *bin[GEMM_UNROLL_K];FLOAT *bout;int bcol,brow,bsub1,bsub2,bsub3;const FLOAT ALPHA=*alpha;
+  int64_t bshift=(int64_t)GEMM_UNROLL_K*(int64_t)ldb-(int64_t)GEMM_BLOCK_DIM_N;
+  bin[0]=bstartpos;
+  for(bsub3=1;bsub3<GEMM_UNROLL_K;bsub3++) bin[bsub3]=bin[bsub3-1]+ldb;
+  for(brow=0;brow<GEMM_LOOP_TIMES_K*GEMM_UNROLL_K;brow+=GEMM_UNROLL_K){
     bout=bblk+brow*GEMM_UNROLL_N;
     for(bcol=0;bcol<GEMM_LOOP_TIMES_N;bcol++){
-      bcopy_4row(GEMM_UNROLL_N)
+      bcopy_ukrow(GEMM_UNROLL_N)
       bout+=GEMM_UNROLL_N*GEMM_BLOCK_L1DIM_K;
     }
-    bin1+=bshift;bin2+=bshift;bin3+=bshift;bin4+=bshift;
+    for(bsub3=0;bsub3<GEMM_UNROLL_K;bsub3++) bin[bsub3]+=bshift;
   }
   for(bsub1=GEMM_UNROLL_N-1;bsub1>0;bsub1--){
-    for(;brow<GEMM_LOOP_TIMES_K*4*(GEMM_UNROLL_N+1-bsub1);brow+=4){
+    for(;brow<GEMM_LOOP_TIMES_K*GEMM_UNROLL_K*(GEMM_UNROLL_N+1-bsub1);brow+=GEMM_UNROLL_K){
       bout=bblk+brow*GEMM_UNROLL_N+(GEMM_LOOP_TIMES_N-1)*GEMM_UNROLL_N*GEMM_BLOCK_L1DIM_K+bsub1;
-      bcopy_4row(GEMM_UNROLL_N-bsub1)
+      bcopy_ukrow(GEMM_UNROLL_N-bsub1)
       bout=bblk+brow*GEMM_UNROLL_N;
       for(bcol=1;bcol<GEMM_LOOP_TIMES_N;bcol++){
-        bcopy_4row(GEMM_UNROLL_N)
+        bcopy_ukrow(GEMM_UNROLL_N)
         bout+=GEMM_UNROLL_N*GEMM_BLOCK_L1DIM_K;
       }
-      bcopy_4row(bsub1)
-      bin1+=bshift;bin2+=bshift;bin3+=bshift;bin4+=bshift;
+      bcopy_ukrow(bsub1)
+      for(bsub3=0;bsub3<GEMM_UNROLL_K;bsub3++) bin[bsub3]+=bshift;
     }
   }
 }

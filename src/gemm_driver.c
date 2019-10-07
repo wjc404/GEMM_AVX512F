@@ -137,7 +137,7 @@ void GEMM_DRIVER(const char *transa,const char *transb,const int *m,const int *n
 #pragma omp parallel
  {
   int tid = omp_get_thread_num();
-  FLOAT *bblk = (FLOAT *)aligned_alloc(64,(GEMM_BLOCK_DIM_N*GEMM_BLOCK_DIM_K)*sizeof(FLOAT)); //thread-private bblk[]
+  FLOAT *bblk = (FLOAT *)malloc((GEMM_BLOCK_DIM_N*GEMM_BLOCK_DIM_K)*sizeof(FLOAT)); //thread-private bblk[]
 //base pointer to B & C for each thread
   FLOAT *c = cstart + (int64_t)LDC * (int64_t)cchunks[tid];
   const FLOAT *b;

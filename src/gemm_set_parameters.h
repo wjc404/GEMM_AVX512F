@@ -7,16 +7,12 @@
  # include "../sgemm_tune.h"
 # endif
 
-//GEMM_UNROLL_M_VEC: 2,3,4 or 6
+//GEMM_UNROLL_M_VEC: 2-6
 # if GEMM_UNROLL_M_VEC < 2
  # undef GEMM_UNROLL_M_VEC
  # define GEMM_UNROLL_M_VEC 2
 # endif
-# if GEMM_UNROLL_M_VEC == 5
- # undef GEMM_UNROLL_M_VEC
- # define GEMM_UNROLL_M_VEC 4
-# endif
-# if GEMM_UNROLL_M_VEC > 5
+# if GEMM_UNROLL_M_VEC > 6
  # undef GEMM_UNROLL_M_VEC
  # define GEMM_UNROLL_M_VEC 6
 # endif
@@ -29,6 +25,16 @@
 # if GEMM_UNROLL_N > (24/GEMM_UNROLL_M_VEC) //maximum 24 zmm for accumulators
  # undef GEMM_UNROLL_N
  # define GEMM_UNROLL_N (24/GEMM_UNROLL_M_VEC)
+# endif
+
+//set GEMM_UNROLL_K
+# if GEMM_UNROLL_K < 4
+ # undef GEMM_UNROLL_K
+ # define GEMM_UNROLL_K 4
+# endif
+# if GEMM_UNROLL_K > 8
+ # undef GEMM_UNROLL_K
+ # define GEMM_UNROLL_K 8
 # endif
 
 //restrict other parameters
@@ -63,7 +69,7 @@
 
 //setting common block dimensions
 # define GEMM_BLOCK_DIM_N (GEMM_LOOP_TIMES_N*GEMM_UNROLL_N)
-# define GEMM_BLOCK_L1DIM_K (GEMM_LOOP_TIMES_K*4*GEMM_UNROLL_N) //GEMM_UNROLL_LOOP_K = 4 in current implementation
+# define GEMM_BLOCK_L1DIM_K (GEMM_LOOP_TIMES_K*GEMM_UNROLL_K*GEMM_UNROLL_N)
 # ifdef NO_REPEAT_C_BLOCK
  # define GEMM_BLOCK_DIM_K GEMM_BLOCK_L1DIM_K
 # else
