@@ -1,4 +1,4 @@
-# include "../gemm_set_parameters.h"
+﻿# include "../gemm_set_parameters.h"
 # define A0      %rdi //ablk pointer
 # define B0      %rsi //bblk pointer
 # define CL      %r14 //cload pointer
@@ -24,6 +24,696 @@
 
 # define BYTES_PER_COL (GEMM_UNROLL_M_VEC*64)
 # define NEXT_A_PREF_STEP (BYTES_PER_COL*GEMM_BLOCK_L1DIM_K/GEMM_BLOCK_DIM_N) //in bytes
+
+# if GEMM_UNROLL_M_VEC == 2
+ # define LAST_PREFNEXTA_UNIT 64 // in bytes
+ # define ZMMPARLIST zmmno1,zmmno2
+ # define ZMMDSTLIST zmmds1,zmmds2
+ # define ZMMCOLT 0,1
+ # define ZMMCOL1 8,9
+ # define ZMMCOL2 10,11
+ # define ZMMCOL3 12,13
+ # define ZMMCOL4 14,15
+ # define ZMMCOL5 16,17
+ # define ZMMCOL6 18,19
+ # define ZMMCOL7 20,21
+ # define ZMMCOL8 22,23
+ # define ZMMCOL9 24,25
+ # define ZMMCOL10 26,27
+ # define ZMMCOL11 28,29
+ # define ZMMCOL12 30,31
+# endif
+# if GEMM_UNROLL_M_VEC == 3
+ # define LAST_PREFNEXTA_UNIT 128
+ # define ZMMPARLIST zmmno1,zmmno2,zmmno3
+ # define ZMMDSTLIST zmmds1,zmmds2,zmmds3
+ # define ZMMCOLT 0,1,2
+ # define ZMMCOL1 8,9,10
+ # define ZMMCOL2 11,12,13
+ # define ZMMCOL3 14,15,16
+ # define ZMMCOL4 17,18,19
+ # define ZMMCOL5 20,21,22
+ # define ZMMCOL6 23,24,25
+ # define ZMMCOL7 26,27,28
+ # define ZMMCOL8 29,30,31
+# endif
+# if GEMM_UNROLL_M_VEC == 4
+ # define LAST_PREFNEXTA_UNIT 128
+ # define ZMMPARLIST zmmno1,zmmno2,zmmno3,zmmno4
+ # define ZMMDSTLIST zmmds1,zmmds2,zmmds3,zmmds4
+ # define ZMMCOLT 0,1,2,3
+ # define ZMMCOL1 8,9,10,11
+ # define ZMMCOL2 12,13,14,15
+ # define ZMMCOL3 16,17,18,19
+ # define ZMMCOL4 20,21,22,23
+ # define ZMMCOL5 24,25,26,27
+ # define ZMMCOL6 28,29,30,31
+# endif
+# if GEMM_UNROLL_M_VEC == 5
+ # define LAST_PREFNEXTA_UNIT 192
+ # define ZMMPARLIST zmmno1,zmmno2,zmmno3,zmmno4,zmmno5
+ # define ZMMDSTLIST zmmds1,zmmds2,zmmds3,zmmds4,zmmds5
+ # define ZMMCOLT 0,1,2,3,4
+ # define ZMMCOL1 8,9,10,11,12
+ # define ZMMCOL2 13,14,15,16,17
+ # define ZMMCOL3 18,19,20,21,22
+ # define ZMMCOL4 23,24,25,26,27
+# endif
+# if GEMM_UNROLL_M_VEC == 6
+ # define LAST_PREFNEXTA_UNIT 192
+ # define ZMMPARLIST zmmno1,zmmno2,zmmno3,zmmno4,zmmno5,zmmno6
+ # define ZMMDSTLIST zmmds1,zmmds2,zmmds3,zmmds4,zmmds5,zmmds6
+ # define ZMMCOLT 0,1,2,3,4,5
+ # define ZMMCOL1 8,9,10,11,12,13
+ # define ZMMCOL2 14,15,16,17,18,19
+ # define ZMMCOL3 20,21,22,23,24,25
+ # define ZMMCOL4 26,27,28,29,30,31
+# endif
+
+# define ZMMCOL_FIRST ZMMCOL1
+# define ZMMCOL_last(imm) ZMMCOL##imm
+# define zmmcol_LAST(imm) ZMMCOL_last(imm)
+# define ZMMCOL_LAST zmmcol_LAST(GEMM_UNROLL_N)
+
+.macro LOAD_A_1COL Aoffset
+    vmovaps \Aoffset(A0),%zmm0
+    vmovaps \Aoffset+64(A0),%zmm1
+# if GEMM_UNROLL_M_VEC > 2
+    vmovaps \Aoffset+128(A0),%zmm2
+# endif
+# if GEMM_UNROLL_M_VEC > 3
+    vmovaps \Aoffset+192(A0),%zmm3
+# endif
+# if GEMM_UNROLL_M_VEC > 4
+    vmovaps \Aoffset+256(A0),%zmm4
+# endif
+# if GEMM_UNROLL_M_VEC > 5
+    vmovaps \Aoffset+320(A0),%zmm5
+# endif
+.endm
+
+.macro FMA_1COL ZMMPARLIST
+    VEC_FMA231 %zmm0,%zmm7,%zmm\zmmno1
+    VEC_FMA231 %zmm1,%zmm7,%zmm\zmmno2
+# if GEMM_UNROLL_M_VEC > 2
+    VEC_FMA231 %zmm2,%zmm7,%zmm\zmmno3
+# endif
+# if GEMM_UNROLL_M_VEC > 3
+    VEC_FMA231 %zmm3,%zmm7,%zmm\zmmno4
+# endif
+# if GEMM_UNROLL_M_VEC > 4
+    VEC_FMA231 %zmm4,%zmm7,%zmm\zmmno5
+# endif
+# if GEMM_UNROLL_M_VEC > 5
+    VEC_FMA231 %zmm5,%zmm7,%zmm\zmmno6
+# endif
+.endm
+
+.macro KERNEL_0
+    LOAD_A_1COL 0
+    addq $BYTES_PER_COL,A0
+    VEC_BROAD (B0),%zmm7
+    addq $SIZE,B0
+    FMA_1COL ZMMCOL1
+.endm
+
+.macro KERNEL_1 Aoff,Boff
+    LOAD_A_1COL \Aoff
+    VEC_BROAD \Boff(B0),%zmm7
+    FMA_1COL ZMMCOL1
+    VEC_BROAD \Boff+SIZE(B0),%zmm7
+    FMA_1COL ZMMCOL2
+# if GEMM_UNROLL_N > 2
+    VEC_BROAD \Boff+SIZE*2(B0),%zmm7
+    FMA_1COL ZMMCOL3
+ # if GEMM_UNROLL_N > 3
+    VEC_BROAD \Boff+SIZE*3(B0),%zmm7
+    FMA_1COL ZMMCOL4
+  # if GEMM_UNROLL_N > 4
+    VEC_BROAD \Boff+SIZE*4(B0),%zmm7
+    FMA_1COL ZMMCOL5
+   # if GEMM_UNROLL_N > 5
+    VEC_BROAD \Boff+SIZE*5(B0),%zmm7
+    FMA_1COL ZMMCOL6
+    # if GEMM_UNROLL_N > 6
+    VEC_BROAD \Boff+SIZE*6(B0),%zmm7
+    FMA_1COL ZMMCOL7
+     # if GEMM_UNROLL_N > 7
+    VEC_BROAD \Boff+SIZE*7(B0),%zmm7
+    FMA_1COL ZMMCOL8
+      # if GEMM_UNROLL_N > 8
+    VEC_BROAD \Boff+SIZE*8(B0),%zmm7
+    FMA_1COL ZMMCOL9
+       # if GEMM_UNROLL_N > 9
+    VEC_BROAD \Boff+SIZE*9(B0),%zmm7
+    FMA_1COL ZMMCOL10
+        # if GEMM_UNROLL_N > 10
+    VEC_BROAD \Boff+SIZE*10(B0),%zmm7
+    FMA_1COL ZMMCOL11
+         # if GEMM_UNROLL_N > 11
+    VEC_BROAD \Boff+SIZE*11(B0),%zmm7
+    FMA_1COL ZMMCOL12
+         # endif
+        # endif
+       # endif
+      # endif
+     # endif
+    # endif
+   # endif
+  # endif
+ # endif
+# endif
+.endm
+
+.macro KERNEL_f Aoff,Boff,delta,deltb
+    KERNEL_1 \Aoff,\Boff
+    addq $\delta,A0
+    addq $\deltb,B0
+.endm
+
+.macro PREF_BULK_UNIT_B notation
+    prefetcht0 (B_PR_ELEM+\notation*GEMM_UNROLL_N)*SIZE(B0)
+# if GEMM_UNROLL_N > 64/SIZE
+    prefetcht0 (B_PR_ELEM+\notation*GEMM_UNROLL_N)*SIZE+64(B0)
+# endif
+.endm
+
+.macro PREF_LAST_UNIT notation,nextablk
+    prefetcht0 A_PR_BYTE+\notation*BYTES_PER_COL(A0)
+    prefetcht0 A_PR_BYTE+\notation*BYTES_PER_COL+64(A0)
+# if GEMM_UNROLL_M_VEC > 2
+    prefetcht0 A_PR_BYTE+\notation*BYTES_PER_COL+128(A0)
+# endif
+# if GEMM_UNROLL_M_VEC > 3
+    prefetcht0 A_PR_BYTE+\notation*BYTES_PER_COL+192(A0)
+# endif
+# if GEMM_UNROLL_M_VEC > 4
+    prefetcht0 A_PR_BYTE+\notation*BYTES_PER_COL+256(A0)
+# endif
+# if GEMM_UNROLL_M_VEC > 5
+    prefetcht0 A_PR_BYTE+\notation*BYTES_PER_COL+320(A0)
+# endif
+    PREF_BULK_UNIT_B \notation
+    prefetcht1 \notation*LAST_PREFNEXTA_UNIT(\nextablk)
+# if LAST_PREFNEXTA_UNIT > 64
+    prefetcht1 \notation*LAST_PREFNEXTA_UNIT+64(\nextablk)
+# endif
+# if LAST_PREFNEXTA_UNIT > 128
+    prefetcht1 \notation*LAST_PREFNEXTA_UNIT+128(\nextablk)
+# endif
+.endm
+
+.macro KERNEL_UNROLL_K_edgen
+    KERNEL_1 0,0
+    KERNEL_1 BYTES_PER_COL,GEMM_UNROLL_N*SIZE
+    KERNEL_1 BYTES_PER_COL*2,GEMM_UNROLL_N*SIZE*2
+# if GEMM_UNROLL_K > 4
+    KERNEL_1 BYTES_PER_COL*3,GEMM_UNROLL_N*SIZE*3
+# endif
+# if GEMM_UNROLL_K > 5
+    KERNEL_1 BYTES_PER_COL*4,GEMM_UNROLL_N*SIZE*4
+# endif
+# if GEMM_UNROLL_K > 6
+    KERNEL_1 BYTES_PER_COL*5,GEMM_UNROLL_N*SIZE*5
+# endif
+# if GEMM_UNROLL_K > 7
+    KERNEL_1 BYTES_PER_COL*6,GEMM_UNROLL_N*SIZE*6
+# endif
+    KERNEL_f BYTES_PER_COL*(GEMM_UNROLL_K-1),GEMM_UNROLL_N*SIZE*(GEMM_UNROLL_K-1),BYTES_PER_COL*GEMM_UNROLL_K,GEMM_UNROLL_N*SIZE*GEMM_UNROLL_K
+.endm
+
+.macro KERNEL_UNROLL_K_last nextablk
+    PREF_LAST_UNIT 0,\nextablk
+    KERNEL_1 0,0
+    PREF_LAST_UNIT 1,\nextablk
+    KERNEL_1 BYTES_PER_COL,GEMM_UNROLL_N*SIZE
+    PREF_LAST_UNIT 2,\nextablk
+    KERNEL_1 BYTES_PER_COL*2,GEMM_UNROLL_N*SIZE*2
+    PREF_LAST_UNIT 3,\nextablk
+# if GEMM_UNROLL_K > 4
+    KERNEL_1 BYTES_PER_COL*3,GEMM_UNROLL_N*SIZE*3
+    PREF_LAST_UNIT 4,\nextablk
+# endif
+# if GEMM_UNROLL_K > 5
+    KERNEL_1 BYTES_PER_COL*4,GEMM_UNROLL_N*SIZE*4
+    PREF_LAST_UNIT 5,\nextablk
+# endif
+# if GEMM_UNROLL_K > 6
+    KERNEL_1 BYTES_PER_COL*5,GEMM_UNROLL_N*SIZE*5
+    PREF_LAST_UNIT 6,\nextablk
+# endif
+# if GEMM_UNROLL_K > 7
+    KERNEL_1 BYTES_PER_COL*6,GEMM_UNROLL_N*SIZE*6
+    PREF_LAST_UNIT 7,\nextablk
+# endif
+    addq $LAST_PREFNEXTA_UNIT*GEMM_UNROLL_K,\nextablk
+    KERNEL_f BYTES_PER_COL*(GEMM_UNROLL_K-1),GEMM_UNROLL_N*SIZE*(GEMM_UNROLL_K-1),BYTES_PER_COL*GEMM_UNROLL_K,GEMM_UNROLL_N*SIZE*GEMM_UNROLL_K
+.endm
+
+.macro KERNEL_BULK_UNIT_FRONT notation
+# if GEMM_UNROLL_M_VEC > 5
+    prefetcht0 A_PR_BYTE+BYTES_PER_COL*(GEMM_UNROLL_K-\notation)-384(A0)
+# endif
+# if GEMM_UNROLL_M_VEC > 4
+    prefetcht0 A_PR_BYTE+BYTES_PER_COL*(GEMM_UNROLL_K-\notation)-320(A0)
+# endif
+# if GEMM_UNROLL_M_VEC > 3
+    prefetcht0 A_PR_BYTE+BYTES_PER_COL*(GEMM_UNROLL_K-\notation)-256(A0)
+# endif
+# if GEMM_UNROLL_M_VEC > 2
+    prefetcht0 A_PR_BYTE+BYTES_PER_COL*(GEMM_UNROLL_K-\notation)-192(A0)
+# endif
+    prefetcht0 A_PR_BYTE+BYTES_PER_COL*(GEMM_UNROLL_K-\notation)-128(A0)
+    prefetcht0 A_PR_BYTE+BYTES_PER_COL*(GEMM_UNROLL_K-\notation)-64(A0)
+    PREF_BULK_UNIT_B (GEMM_UNROLL_K-\notation-1)
+    KERNEL_1 BYTES_PER_COL*(GEMM_UNROLL_K-\notation-1),GEMM_UNROLL_N*SIZE*(GEMM_UNROLL_K-\notation-1)
+.endm
+
+.macro KERNEL_UNROLL_K Arefpos,Areset
+    cmpq \Arefpos,A0
+    cmoveq \Areset,AD
+# if GEMM_UNROLL_K > 7
+    KERNEL_BULK_UNIT_FRONT 7
+# endif
+# if GEMM_UNROLL_K > 6
+    KERNEL_BULK_UNIT_FRONT 6
+# endif
+# if GEMM_UNROLL_K > 5
+    KERNEL_BULK_UNIT_FRONT 5
+# endif
+# if GEMM_UNROLL_K > 4
+    KERNEL_BULK_UNIT_FRONT 4
+# endif
+# if GEMM_UNROLL_M_VEC > 5
+    prefetcht0 A_PR_BYTE+BYTES_PER_COL*(GEMM_UNROLL_K-3)-384(A0)
+# endif
+# if GEMM_UNROLL_M_VEC > 4
+    prefetcht0 A_PR_BYTE+BYTES_PER_COL*(GEMM_UNROLL_K-3)-320(A0)
+# endif
+# if GEMM_UNROLL_M_VEC > 3
+    prefetcht0 A_PR_BYTE+BYTES_PER_COL*(GEMM_UNROLL_K-3)-256(A0)
+# endif
+# if GEMM_UNROLL_M_VEC > 2
+    prefetcht0 A_PR_BYTE+BYTES_PER_COL*(GEMM_UNROLL_K-3)-192(A0)
+# endif
+# if A_PR_BYTE > BYTES_PER_COL*3+127
+    prefetcht0 A_PR_BYTE+BYTES_PER_COL*(GEMM_UNROLL_K-3)-128(A0,AD,1)
+# else
+    prefetcht0 A_PR_BYTE+BYTES_PER_COL*(GEMM_UNROLL_K-3)-128(A0)
+# endif
+# if A_PR_BYTE > BYTES_PER_COL*3+63
+    prefetcht0 A_PR_BYTE+BYTES_PER_COL*(GEMM_UNROLL_K-3)-64(A0,AD,1)
+# else
+    prefetcht0 A_PR_BYTE+BYTES_PER_COL*(GEMM_UNROLL_K-3)-64(A0)
+# endif
+    PREF_BULK_UNIT_B (GEMM_UNROLL_K-4)
+    KERNEL_1 BYTES_PER_COL*(GEMM_UNROLL_K-4),GEMM_UNROLL_N*SIZE*(GEMM_UNROLL_K-4)
+# if GEMM_UNROLL_M_VEC > 5
+    prefetcht0 A_PR_BYTE+BYTES_PER_COL*(GEMM_UNROLL_K-2)-384(A0)
+# endif
+# if GEMM_UNROLL_M_VEC > 4
+    prefetcht0 A_PR_BYTE+BYTES_PER_COL*(GEMM_UNROLL_K-2)-320(A0)
+# endif
+# if GEMM_UNROLL_M_VEC > 3
+    prefetcht0 A_PR_BYTE+BYTES_PER_COL*(GEMM_UNROLL_K-2)-256(A0)
+# endif
+# if GEMM_UNROLL_M_VEC > 2
+ # if A_PR_BYTE > BYTES_PER_COL*2+191
+    prefetcht0 A_PR_BYTE+BYTES_PER_COL*(GEMM_UNROLL_K-2)-192(A0,AD,1)
+ # else
+    prefetcht0 A_PR_BYTE+BYTES_PER_COL*(GEMM_UNROLL_K-2)-192(A0)
+ # endif
+# endif
+# if A_PR_BYTE > BYTES_PER_COL*2+127
+    prefetcht0 A_PR_BYTE+BYTES_PER_COL*(GEMM_UNROLL_K-2)-128(A0,AD,1)
+# else
+    prefetcht0 A_PR_BYTE+BYTES_PER_COL*(GEMM_UNROLL_K-2)-128(A0)
+# endif
+# if A_PR_BYTE > BYTES_PER_COL*2+63
+    prefetcht0 A_PR_BYTE+BYTES_PER_COL*(GEMM_UNROLL_K-2)-64(A0,AD,1)
+# else
+    prefetcht0 A_PR_BYTE+BYTES_PER_COL*(GEMM_UNROLL_K-2)-64(A0)
+# endif
+    PREF_BULK_UNIT_B (GEMM_UNROLL_K-3)
+    KERNEL_1 BYTES_PER_COL*(GEMM_UNROLL_K-3),GEMM_UNROLL_N*SIZE*(GEMM_UNROLL_K-3)
+# if GEMM_UNROLL_M_VEC > 5
+ # if A_PR_BYTE > BYTES_PER_COL+383
+    prefetcht0 A_PR_BYTE+BYTES_PER_COL*(GEMM_UNROLL_K-1)-384(A0,AD,1)
+ # else
+    prefetcht0 A_PR_BYTE+BYTES_PER_COL*(GEMM_UNROLL_K-1)-384(A0)
+ # endif
+# endif
+# if GEMM_UNROLL_M_VEC > 4
+ # if A_PR_BYTE > BYTES_PER_COL+319
+    prefetcht0 A_PR_BYTE+BYTES_PER_COL*(GEMM_UNROLL_K-1)-320(A0,AD,1)
+ # else
+    prefetcht0 A_PR_BYTE+BYTES_PER_COL*(GEMM_UNROLL_K-1)-320(A0)
+ # endif
+# endif
+# if GEMM_UNROLL_M_VEC > 3
+ # if A_PR_BYTE > BYTES_PER_COL+255
+    prefetcht0 A_PR_BYTE+BYTES_PER_COL*(GEMM_UNROLL_K-1)-256(A0,AD,1)
+ # else
+    prefetcht0 A_PR_BYTE+BYTES_PER_COL*(GEMM_UNROLL_K-1)-256(A0)
+ # endif
+# endif
+# if GEMM_UNROLL_M_VEC > 2
+ # if A_PR_BYTE > BYTES_PER_COL+191
+    prefetcht0 A_PR_BYTE+BYTES_PER_COL*(GEMM_UNROLL_K-1)-192(A0,AD,1)
+ # else
+    prefetcht0 A_PR_BYTE+BYTES_PER_COL*(GEMM_UNROLL_K-1)-192(A0)
+ # endif
+# endif
+# if A_PR_BYTE > BYTES_PER_COL+127
+    prefetcht0 A_PR_BYTE+BYTES_PER_COL*(GEMM_UNROLL_K-1)-128(A0,AD,1)
+# else
+    prefetcht0 A_PR_BYTE+BYTES_PER_COL*(GEMM_UNROLL_K-1)-128(A0)
+# endif
+# if A_PR_BYTE > BYTES_PER_COL+63
+    prefetcht0 A_PR_BYTE+BYTES_PER_COL*(GEMM_UNROLL_K-1)-64(A0,AD,1)
+# else
+    prefetcht0 A_PR_BYTE+BYTES_PER_COL*(GEMM_UNROLL_K-1)-64(A0)
+# endif
+    PREF_BULK_UNIT_B (GEMM_UNROLL_K-2)
+    KERNEL_1 BYTES_PER_COL*(GEMM_UNROLL_K-2),GEMM_UNROLL_N*SIZE*(GEMM_UNROLL_K-2)
+# if GEMM_UNROLL_M_VEC > 5
+ # if A_PR_BYTE > 383
+    prefetcht0 A_PR_BYTE+BYTES_PER_COL*GEMM_UNROLL_K-384(A0,AD,1)
+ # else
+    prefetcht0 A_PR_BYTE+BYTES_PER_COL*GEMM_UNROLL_K-384(A0)
+ # endif
+# endif
+# if GEMM_UNROLL_M_VEC > 4
+ # if A_PR_BYTE > 319
+    prefetcht0 A_PR_BYTE+BYTES_PER_COL*GEMM_UNROLL_K-320(A0,AD,1)
+ # else
+    prefetcht0 A_PR_BYTE+BYTES_PER_COL*GEMM_UNROLL_K-320(A0)
+ # endif
+# endif
+# if GEMM_UNROLL_M_VEC > 3
+ # if A_PR_BYTE > 255
+    prefetcht0 A_PR_BYTE+BYTES_PER_COL*GEMM_UNROLL_K-256(A0,AD,1)
+ # else
+    prefetcht0 A_PR_BYTE+BYTES_PER_COL*GEMM_UNROLL_K-256(A0)
+ # endif
+# endif
+# if GEMM_UNROLL_M_VEC > 2
+ # if A_PR_BYTE > 191
+    prefetcht0 A_PR_BYTE+BYTES_PER_COL*GEMM_UNROLL_K-192(A0,AD,1)
+ # else
+    prefetcht0 A_PR_BYTE+BYTES_PER_COL*GEMM_UNROLL_K-192(A0)
+ # endif
+# endif
+# if A_PR_BYTE > 127
+    prefetcht0 A_PR_BYTE+BYTES_PER_COL*GEMM_UNROLL_K-128(A0,AD,1)
+# else
+    prefetcht0 A_PR_BYTE+BYTES_PER_COL*GEMM_UNROLL_K-128(A0)
+# endif
+    prefetcht0 A_PR_BYTE+BYTES_PER_COL*GEMM_UNROLL_K-64(A0,AD,1)
+    PREF_BULK_UNIT_B (GEMM_UNROLL_K-1)
+    KERNEL_f BYTES_PER_COL*(GEMM_UNROLL_K-1),GEMM_UNROLL_N*SIZE*(GEMM_UNROLL_K-1),BYTES_PER_COL*GEMM_UNROLL_K,GEMM_UNROLL_N*SIZE*GEMM_UNROLL_K
+.endm
+
+.macro CLEAR ZMMPARLIST
+    vpxorq %zmm\zmmno1,%zmm\zmmno1,%zmm\zmmno1
+    vpxorq %zmm\zmmno2,%zmm\zmmno2,%zmm\zmmno2
+# if GEMM_UNROLL_M_VEC > 2
+    vpxorq %zmm\zmmno3,%zmm\zmmno3,%zmm\zmmno3
+# endif
+# if GEMM_UNROLL_M_VEC > 3
+    vpxorq %zmm\zmmno4,%zmm\zmmno4,%zmm\zmmno4
+# endif
+# if GEMM_UNROLL_M_VEC > 4
+    vpxorq %zmm\zmmno5,%zmm\zmmno5,%zmm\zmmno5
+# endif
+# if GEMM_UNROLL_M_VEC > 5
+    vpxorq %zmm\zmmno6,%zmm\zmmno6,%zmm\zmmno6
+# endif
+.endm
+
+.macro UNIT_SHIFTZMM ZMMPARLIST,ZMMDSTLIST
+    vmovaps %zmm\zmmno1,%zmm\zmmds1
+    vmovaps %zmm\zmmno2,%zmm\zmmds2
+# if GEMM_UNROLL_M_VEC > 2
+    vmovaps %zmm\zmmno3,%zmm\zmmds3
+# endif
+# if GEMM_UNROLL_M_VEC > 3
+    vmovaps %zmm\zmmno4,%zmm\zmmds4
+# endif
+# if GEMM_UNROLL_M_VEC > 4
+    vmovaps %zmm\zmmno5,%zmm\zmmds5
+# endif
+# if GEMM_UNROLL_M_VEC > 5
+    vmovaps %zmm\zmmno6,%zmm\zmmds6
+# endif
+.endm
+
+.macro SHIFTZMM
+    UNIT_SHIFTZMM ZMMCOL2,ZMMCOL1
+# if GEMM_UNROLL_N > 2
+    UNIT_SHIFTZMM ZMMCOL3,ZMMCOL2
+# endif
+# if GEMM_UNROLL_N > 3
+    UNIT_SHIFTZMM ZMMCOL4,ZMMCOL3
+# endif
+# if GEMM_UNROLL_N > 4
+    UNIT_SHIFTZMM ZMMCOL5,ZMMCOL4
+# endif
+# if GEMM_UNROLL_N > 5
+    UNIT_SHIFTZMM ZMMCOL6,ZMMCOL5
+# endif
+# if GEMM_UNROLL_N > 6
+    UNIT_SHIFTZMM ZMMCOL7,ZMMCOL6
+# endif
+# if GEMM_UNROLL_N > 7
+    UNIT_SHIFTZMM ZMMCOL8,ZMMCOL7
+# endif
+# if GEMM_UNROLL_N > 8
+    UNIT_SHIFTZMM ZMMCOL9,ZMMCOL8
+# endif
+# if GEMM_UNROLL_N > 9
+    UNIT_SHIFTZMM ZMMCOL10,ZMMCOL9
+# endif
+# if GEMM_UNROLL_N > 10
+    UNIT_SHIFTZMM ZMMCOL11,ZMMCOL10
+# endif
+# if GEMM_UNROLL_N > 11
+    UNIT_SHIFTZMM ZMMCOL12,ZMMCOL11
+# endif
+.endm
+
+.macro UPDATECBLK_1col
+    SHIFTZMM
+    CLEAR ZMMCOL_LAST
+.endm
+
+.macro SUB_STORE_1col ZMMPARLIST
+    VEC_ADD (CS),%zmm\zmmno1,%zmm\zmmno1
+    VEC_ADD 64(CS),%zmm\zmmno2,%zmm\zmmno2
+    vmovups %zmm\zmmno1,(CS)
+    vmovups %zmm\zmmno2,64(CS)
+# if GEMM_UNROLL_M_VEC > 2
+    VEC_ADD 128(CS),%zmm\zmmno3,%zmm\zmmno3
+    vmovups %zmm\zmmno3,128(CS)
+# endif
+# if GEMM_UNROLL_M_VEC > 3
+    VEC_ADD 192(CS),%zmm\zmmno4,%zmm\zmmno4
+    vmovups %zmm\zmmno4,192(CS)
+# endif
+# if GEMM_UNROLL_M_VEC > 4
+    VEC_ADD 256(CS),%zmm\zmmno5,%zmm\zmmno5
+    vmovups %zmm\zmmno5,256(CS)
+# endif
+# if GEMM_UNROLL_M_VEC > 5
+    VEC_ADD 320(CS),%zmm\zmmno6,%zmm\zmmno6
+    vmovups %zmm\zmmno6,320(CS)
+# endif
+.endm
+
+.macro SUB_STORE_1col_edgem ZMMPARLIST
+    CLEAR ZMMCOLT
+    VEC_MASKMOV (CS),%zmm0{%k1}
+    VEC_MASKMOV 64(CS),%zmm1{%k2}
+    VEC_ADD %zmm0,%zmm\zmmno1,%zmm\zmmno1
+    VEC_ADD %zmm1,%zmm\zmmno2,%zmm\zmmno2
+    VEC_MASKMOV %zmm\zmmno1,(CS){%k1}
+    VEC_MASKMOV %zmm\zmmno2,64(CS){%k2}
+# if GEMM_UNROLL_M_VEC > 2
+    VEC_MASKMOV 128(CS),%zmm2{%k3}
+    VEC_ADD %zmm2,%zmm\zmmno3,%zmm\zmmno3
+    VEC_MASKMOV %zmm\zmmno3,128(CS){%k3}
+# endif
+# if GEMM_UNROLL_M_VEC > 3
+    VEC_MASKMOV 192(CS),%zmm3{%k4}
+    VEC_ADD %zmm3,%zmm\zmmno4,%zmm\zmmno4
+    VEC_MASKMOV %zmm\zmmno4,192(CS){%k4}
+# endif
+# if GEMM_UNROLL_M_VEC > 4
+    VEC_MASKMOV 256(CS),%zmm4{%k5}
+    VEC_ADD %zmm4,%zmm\zmmno5,%zmm\zmmno5
+    VEC_MASKMOV %zmm\zmmno5,256(CS){%k5}
+# endif
+# if GEMM_UNROLL_M_VEC > 5
+    VEC_MASKMOV 320(CS),%zmm5{%k6}
+    VEC_ADD %zmm5,%zmm\zmmno6,%zmm\zmmno6
+    VEC_MASKMOV %zmm\zmmno6,320(CS){%k6}
+# endif
+.endm
+
+.macro STORECBLK_1col
+    SUB_STORE_1col ZMMCOL1
+    addq LDC,CS
+.endm
+
+.macro STORECBLK_1col_edgem
+    SUB_STORE_1col_edgem ZMMCOL1
+    addq LDC,CS
+.endm
+
+.macro INIT_C
+    CLEAR ZMMCOL2
+# if GEMM_UNROLL_N > 2
+    CLEAR ZMMCOL3
+ # if GEMM_UNROLL_N > 3
+    CLEAR ZMMCOL4
+  # if GEMM_UNROLL_N > 4
+    CLEAR ZMMCOL5
+   # if GEMM_UNROLL_N > 5
+    CLEAR ZMMCOL6
+    # if GEMM_UNROLL_N > 6
+    CLEAR ZMMCOL7
+     # if GEMM_UNROLL_N > 7
+    CLEAR ZMMCOL8
+      # if GEMM_UNROLL_N > 8
+    CLEAR ZMMCOL9
+       # if GEMM_UNROLL_N > 9
+    CLEAR ZMMCOL10
+        # if GEMM_UNROLL_N > 10
+    CLEAR ZMMCOL11
+         # if GEMM_UNROLL_N > 11
+    CLEAR ZMMCOL12
+         # endif
+        # endif
+       # endif
+      # endif
+     # endif
+    # endif
+   # endif
+  # endif
+ # endif
+# endif
+.endm
+
+.macro FIN_C
+    SUB_STORE_1col ZMMCOL1
+# if GEMM_UNROLL_N > 2
+    addq LDC,CS
+    SUB_STORE_1col ZMMCOL2
+ # if GEMM_UNROLL_N > 3
+    addq LDC,CS
+    SUB_STORE_1col ZMMCOL3
+  # if GEMM_UNROLL_N > 4
+    addq LDC,CS
+    SUB_STORE_1col ZMMCOL4
+   # if GEMM_UNROLL_N > 5
+    addq LDC,CS
+    SUB_STORE_1col ZMMCOL5
+    # if GEMM_UNROLL_N > 6
+    addq LDC,CS
+    SUB_STORE_1col ZMMCOL6
+     # if GEMM_UNROLL_N > 7
+    addq LDC,CS
+    SUB_STORE_1col ZMMCOL7
+      # if GEMM_UNROLL_N > 8
+    addq LDC,CS
+    SUB_STORE_1col ZMMCOL8
+       # if GEMM_UNROLL_N > 9
+    addq LDC,CS
+    SUB_STORE_1col ZMMCOL9
+        # if GEMM_UNROLL_N > 10
+    addq LDC,CS
+    SUB_STORE_1col ZMMCOL10
+         # if GEMM_UNROLL_N > 11
+    addq LDC,CS
+    SUB_STORE_1col ZMMCOL11
+         # endif
+        # endif
+       # endif
+      # endif
+     # endif
+    # endif
+   # endif
+  # endif
+ # endif
+# endif
+.endm
+
+.macro FIN_C_edgem
+    SUB_STORE_1col_edgem ZMMCOL2
+# if GEMM_UNROLL_N > 2
+    addq LDC,CS
+    SUB_STORE_1col_edgem ZMMCOL3
+ # if GEMM_UNROLL_N > 3
+    addq LDC,CS
+    SUB_STORE_1col_edgem ZMMCOL4
+  # if GEMM_UNROLL_N > 4
+    addq LDC,CS
+    SUB_STORE_1col_edgem ZMMCOL5
+   # if GEMM_UNROLL_N > 5
+    addq LDC,CS
+    SUB_STORE_1col_edgem ZMMCOL6
+    # if GEMM_UNROLL_N > 6
+    addq LDC,CS
+    SUB_STORE_1col_edgem ZMMCOL7
+     # if GEMM_UNROLL_N > 7
+    addq LDC,CS
+    SUB_STORE_1col_edgem ZMMCOL8
+      # if GEMM_UNROLL_N > 8
+    addq LDC,CS
+    SUB_STORE_1col_edgem ZMMCOL9
+       # if GEMM_UNROLL_N > 9
+    addq LDC,CS
+    SUB_STORE_1col_edgem ZMMCOL10
+        # if GEMM_UNROLL_N > 10
+    addq LDC,CS
+    SUB_STORE_1col_edgem ZMMCOL11
+         # if GEMM_UNROLL_N > 11
+    addq LDC,CS
+    SUB_STORE_1col_edgem ZMMCOL12
+         # endif
+        # endif
+       # endif
+      # endif
+     # endif
+    # endif
+   # endif
+  # endif
+ # endif
+# endif
+.endm
+
+.macro ZERO_C_1col //used in edge part
+    CLEAR ZMMCOL1
+.endm
+
+.macro ZERO_C_ncol //used in edge part
+    CLEAR ZMMCOL1
+    INIT_C
+.endm
+
+.macro STORECBLK_ncol //used in edge part
+    FIN_C
+    addq LDC,CS
+    SUB_STORE_1col ZMMCOL_LAST
+    addq LDC,CS
+.endm
+
+.macro STORECBLK_ncol_edgem //used in edge part
+    SUB_STORE_1col_edgem ZMMCOL1
+    addq LDC,CS
+    FIN_C_edgem
+    addq LDC,CS
+.endm
 
 .macro PREF_1_col insn,src //insn=prefetcht0,prefetcht1 or prefetcht2; src=c_address_register
     \insn (\src)
@@ -125,19 +815,6 @@
 # endif
 .endm
 
-# if GEMM_UNROLL_M_VEC == 2
- # include "gemm_kernel_unroll2.S"
-# endif
-# if GEMM_UNROLL_M_VEC == 3
- # include "gemm_kernel_unroll3.S"
-# endif
-# if GEMM_UNROLL_M_VEC == 4
- # include "gemm_kernel_unroll4.S"
-# endif
-# if GEMM_UNROLL_M_VEC == 6
- # include "gemm_kernel_unroll6.S"
-# endif
-
 .section .text
 //enter the function unit_gemmblkregccc, rdi=abufferctpos, rsi=bblk, rdx=cstartpos, ecx=ldc, r8d=prefcoffset(in bytes)
 .globl unit_gemmblkregccc
@@ -159,7 +836,7 @@ unit_gemmblkregccc:
     INIT_C
     xorq %r12,%r12
     movq A0,%r9
-    addq $(GEMM_BLOCK_L1DIM_K-4)*BYTES_PER_COL,%r9 //Arefpos
+    addq $(GEMM_BLOCK_L1DIM_K-GEMM_UNROLL_K)*BYTES_PER_COL,%r9 //Arefpos
     movq $(-GEMM_BLOCK_L1DIM_K)*BYTES_PER_COL,%r8 //Areset
 .Louter_gemmblkregccc:
     xorq AD,AD
@@ -196,7 +873,8 @@ unit_gemmblkregccc:
 # endif
     xorq %r11,%r11
 .Linner_gemmblkregccc:
-    KERNEL_4 %r9,%r8
+    incq %r11
+    KERNEL_UNROLL_K %r9,%r8
     cmpq $GEMM_LOOP_TIMES_K,%r11
     jb .Linner_gemmblkregccc
 
@@ -217,8 +895,9 @@ unit_gemmblkregccc:
     prefetcht2 (CS,%r13,1)
     xorq %r11,%r11
 .Linner_gemmblkregccc_last:
-    KERNEL_2 %r9
-    cmpq $GEMM_LOOP_TIMES_K*2,%r11
+    incq %r11
+    KERNEL_UNROLL_K_last %r9
+    cmpq $GEMM_LOOP_TIMES_K,%r11
     jb .Linner_gemmblkregccc_last
 
     incq %r12
@@ -256,7 +935,7 @@ unit_gemmblktailccc:
     INIT_C
     xorq %r12,%r12
     movq A0,%r9
-    addq $(GEMM_BLOCK_L1DIM_K-4)*BYTES_PER_COL,%r9 //Arefpos
+    addq $(GEMM_BLOCK_L1DIM_K-GEMM_UNROLL_K)*BYTES_PER_COL,%r9 //Arefpos
     movq $(-GEMM_BLOCK_L1DIM_K)*BYTES_PER_COL,%r8 //Areset
 .Louter_tail:
     xorq AD,AD
@@ -264,7 +943,8 @@ unit_gemmblktailccc:
     PREF_1_col prefetcht0,CS
     xorq %r11,%r11
 .Linner_tail:
-    KERNEL_4 %r9,%r8
+    incq %r11
+    KERNEL_UNROLL_K %r9,%r8
     cmpq $GEMM_LOOP_TIMES_K,%r11
     jb .Linner_tail
 
@@ -406,7 +1086,8 @@ unit_gemmblkirregnccc:
     xorq %r11,%r11
     movq AL,A0
 .Ledgen_ncol_inner:
-    KERNEL_4_edgen
+    incq %r11
+    KERNEL_UNROLL_K_edgen
     cmpq $GEMM_LOOP_TIMES_K*GEMM_UNROLL_N,%r11
     jb .Ledgen_ncol_inner
 
@@ -516,7 +1197,10 @@ timedelay:
 .Ltimedelay:
     incq %r11
     vhaddpd %ymm0,%ymm0,%ymm0
-    cmpq $2000,%r11
+    vhaddpd %ymm0,%ymm0,%ymm0
+    vhaddpd %ymm0,%ymm0,%ymm0
+    vhaddpd %ymm0,%ymm0,%ymm0
+    cmpq $500,%r11
     jb .Ltimedelay
 
     vzeroupper
