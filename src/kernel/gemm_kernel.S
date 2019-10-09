@@ -842,34 +842,62 @@ unit_gemmblkregccc:
     xorq AD,AD
     UPDATECBLK_1col
     PREF_1_col prefetcht0,CS
+# ifdef HIGH_MEM_LATENCY
+    prefetcht1 (CS,LDC,1)
+ # if BYTES_PER_COL > 65
+    prefetcht1 64(CS,LDC,1)
+ # endif
+ # if BYTES_PER_COL > 129
+    prefetcht1 128(CS,LDC,1)
+ # endif
+ # if BYTES_PER_COL > 193
+    prefetcht1 192(CS,LDC,1)
+ # endif
+ # if BYTES_PER_COL > 257
+    prefetcht1 256(CS,LDC,1)
+ # endif
+ # if BYTES_PER_COL > 321
+    prefetcht1 320(CS,LDC,1)
+ # endif
+ # if BYTES_PER_COL > 385
+    prefetcht1 384(CS,LDC,1)
+ # endif
+ # if BYTES_PER_COL > 449
+    prefetcht1 448(CS,LDC,1)
+ # endif
+ # if BYTES_PER_COL > 513
+    prefetcht1 512(CS,LDC,1)
+ # endif
+    prefetcht1 BYTES_PER_COL-1(CS,LDC,1)
+# endif
     subq $NEXT_A_PREF_STEP,AL
-    prefetcht1 (AL)
+    prefetcht2 (AL)
 # if NEXT_A_PREF_STEP > 64
-    prefetcht1 64(AL)
+    prefetcht2 64(AL)
 # endif
 # if NEXT_A_PREF_STEP > 128
-    prefetcht1 128(AL)
+    prefetcht2 128(AL)
 # endif
 # if NEXT_A_PREF_STEP > 192
-    prefetcht1 192(AL)
+    prefetcht2 192(AL)
 # endif
 # if NEXT_A_PREF_STEP > 256
-    prefetcht1 256(AL)
+    prefetcht2 256(AL)
 # endif
 # if NEXT_A_PREF_STEP > 320
-    prefetcht1 320(AL)
+    prefetcht2 320(AL)
 # endif
 # if NEXT_A_PREF_STEP > 384
-    prefetcht1 384(AL)
+    prefetcht2 384(AL)
 # endif
 # if NEXT_A_PREF_STEP > 448
-    prefetcht1 448(AL)
+    prefetcht2 448(AL)
 # endif
 # if NEXT_A_PREF_STEP > 512
-    prefetcht1 512(AL)
+    prefetcht2 512(AL)
 # endif
 # ifndef NO_REPEAT_C_BLOCK
-    prefetcht2 (CS,%r13,1)
+    prefetcht1 (CS,%r13,1)
 # endif
     xorq %r11,%r11
 .Linner_gemmblkregccc:
@@ -909,7 +937,6 @@ unit_gemmblkregccc:
     movq CIP,CS
     FIN_C
 
-    vzeroupper
     pop %r12
     pop %r13
     pop %r14
@@ -956,7 +983,6 @@ unit_gemmblktailccc:
 
     movq CIP,CS
     FIN_C_edgem //use k1-k7 instead of stack
-    vzeroupper
     pop %r12
     pop %r13
     pop %r14
@@ -1054,7 +1080,6 @@ unit_gemmblkirregkccc: //CS for store, CL for prefetcht0
     jb .Ledgek_outer
 
 .Ledgek_end:
-    vzeroupper
     pop %r12
     pop %r13
     pop %r14
@@ -1115,7 +1140,6 @@ unit_gemmblkirregnccc:
     jnz .Ledgen_1col_outer
 
 .Ledgen_end:
-    vzeroupper
     pop %r12
     pop %r13
     pop %r14
@@ -1182,7 +1206,6 @@ unit_gemmblkirregccc:
     jnz .Ledge_1col_outer
 
 .Ledge_end:
-    vzeroupper
     pop %r12
     pop %r13
     pop %r14
