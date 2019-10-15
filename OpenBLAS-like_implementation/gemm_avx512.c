@@ -1,4 +1,4 @@
-//gcc -march=skylake-avx512 --shared -fPIC -O2 kernel_avx512.c -o DGEMMv0.so
+//gcc -march=skylake-avx512 --shared -fPIC -O2 gemm_avx512.c -o DGEMMv0.so
 
 
 # include <stdio.h>
@@ -293,44 +293,6 @@
     INNER_PREF_8x8\
     INNER_TRANS_8x8(%%zmm10,%%zmm13,%%zmm16,%%zmm19,%%zmm22,%%zmm25,%%zmm28,%%zmm31)\
     INNER_STORE_8x8(%%zmm10,%%zmm13,%%zmm16,%%zmm19,%%zmm22,%%zmm25,%%zmm28,%%zmm31)
-
-#define COMPUTE_m1n8 {\
-    __asm__ __volatile__(\
-    INNER_INIT_m1n8\
-    INNER_KERNELm1(8)\
-    INNER_SAVE_m1n8\
-    :"+r"(a_block_pointer):"r"(packed_b_pointer),"r"((int64_t)k),"r"(c_pointer),"r"(ldc_in_bytes)\
-    :"zmm4","zmm5","zmm6","zmm7","zmm8","cc","memory","k1");\
-    c_pointer += 1;\
-}
-#define COMPUTE_m2n8 {\
-    __asm__ __volatile__(\
-    INNER_INIT_m2n8\
-    INNER_KERNELm2(8)\
-    INNER_SAVE_m2n8\
-    :"+r"(a_block_pointer):"r"(packed_b_pointer),"r"((int64_t)k),"r"(c_pointer),"r"(ldc_in_bytes)\
-    :"zmm4","zmm5","zmm6","zmm7","zmm8","zmm9","cc","memory","k1");\
-    c_pointer += 2;\
-}
-#define COMPUTE_m4n8 {\
-    __asm__ __volatile__(\
-    INNER_INIT_m4n8\
-    INNER_KERNELm4(8)\
-    INNER_SAVE_m4n8\
-    :"+r"(a_block_pointer):"r"(packed_b_pointer),"r"((int64_t)k),"r"(c_pointer),"r"(ldc_in_bytes),"Yk"(k02),"Yk"(k03),"Yk"(k01)\
-    :"zmm4","zmm5","zmm6","zmm7","zmm8","zmm9","zmm10","zmm11","cc","memory");\
-    c_pointer += 4;\
-}
-#define COMPUTE_m8n8 {\
-    __asm__ __volatile__(\
-    INNER_INIT_m8n8\
-    INNER_KERNELm8(8)\
-    INNER_SAVE_m8n8\
-    :"+r"(a_block_pointer):"r"(packed_b_pointer),"r"((int64_t)k),"r"(c_pointer),"r"(ldc_in_bytes),"Yk"(k02),"Yk"(k03)\
-    :"zmm4","zmm5","zmm6","zmm7","zmm8","zmm9","zmm10","zmm11","zmm12","zmm13","zmm14","zmm15","cc","memory");\
-    c_pointer += 8;\
-}
-
 
 //%8 = m(input,r), the rest retain
 #define COMPUTE_n8 {\
