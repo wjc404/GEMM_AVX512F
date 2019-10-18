@@ -333,7 +333,7 @@
     "movq %%r14,%8;shlq $3,%8;subq %8,%3;shrq $3,%8;"\
     "shlq $3,%4;addq %4,%3;shrq $3,%4;"\
     :"+r"(a_block_pointer),"+r"(packed_b_pointer),"+r"(K),"+r"(c_pointer),"+r"(ldc_in_bytes),"+Yk"(k02),"+Yk"(k03),"+Yk"(k01),"+r"(M),"+r"(alpha)\
-    ::"zmm3","zmm4","zmm5","zmm6","zmm7","zmm8","zmm9","zmm10","zmm11","zmm12","zmm13","zmm14","zmm15","cc","memory","k1","r13","r14");\
+    ::"zmm3","zmm4","zmm5","zmm6","zmm7","zmm8","zmm9","zmm10","zmm11","zmm12","zmm13","zmm14","zmm15","cc","memory","k1","r12","r13","r14");\
     a_block_pointer -= M * K;\
 }
 #define COMPUTE_n16 {\
@@ -428,7 +428,7 @@
 
 #define BLASLONG int //debug
 
-static void __attribute__ ((noinline)) KERNEL_MAIN(double *packed_a, double *packed_b, BLASLONG m, BLASLONG ndiv8, BLASLONG k, BLASLONG LDC, double *c,double *alpha){//icopy=8,ocopy=8
+static void KERNEL_MAIN(double *packed_a, double *packed_b, BLASLONG m, BLASLONG ndiv8, BLASLONG k, BLASLONG LDC, double *c,double *alpha){//icopy=8,ocopy=8
 //perform C += A<pack> B<pack>
     if(k==0 || m==0 || ndiv8==0) return;
     int64_t ldc_in_bytes = (int64_t)LDC * sizeof(double);
@@ -651,7 +651,7 @@ static void __attribute__ ((noinline)) KERNEL_MAIN(double *packed_a, double *pac
     c_pointer ++;\
 }
 
-static void __attribute__ ((noinline)) KERNEL_EDGE(double *packed_a, double *packed_b, BLASLONG m, BLASLONG edge_n, BLASLONG k, BLASLONG LDC, double *c,double *alpha){//icopy=8,ocopy=8
+static void KERNEL_EDGE(double *packed_a, double *packed_b, BLASLONG m, BLASLONG edge_n, BLASLONG k, BLASLONG LDC, double *c,double *alpha){//icopy=8,ocopy=8
 //perform C += A<pack> B<pack> , edge_n<8 must be satisfied !
     if(k==0 || m==0 || edge_n==0) return;
     double *a_block_pointer,*b_block_pointer,*b_base_pointer;
