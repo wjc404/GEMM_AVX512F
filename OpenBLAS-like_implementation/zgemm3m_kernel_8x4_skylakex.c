@@ -87,14 +87,14 @@
     "addq $8,"#b_addr";"
 #define KERNEL_h_k1m4n2(b_addr) \
     "vmovddup (%0),%%ymm1; vmovddup 8(%0),%%ymm2; addq $32,%0;"\
-    "vbroadcastf32x4 ("#b_addr"),%%ymm3; vfmadd231pd %%ymm1,%%ymm3,%%ymm4; vfmadd231pd %%ymm2,%%ymm3,%%ymm5;"
+    "vbroadcastf128 ("#b_addr"),%%ymm3; vfmadd231pd %%ymm1,%%ymm3,%%ymm4; vfmadd231pd %%ymm2,%%ymm3,%%ymm5;"
 #define KERNEL_k1m4n2(b_addr) KERNEL_h_k1m4n2(b_addr) "addq $16,"#b_addr";"
 #define KERNEL_h_k1m4n4(b_addr) \
-    KERNEL_h_k1m4n2(b_addr) "vbroadcastf32x4 16("#b_addr"),%%ymm3; vfmadd231pd %%ymm1,%%ymm3,%%ymm6; vfmadd231pd %%ymm2,%%ymm3,%%ymm7;"
+    KERNEL_h_k1m4n2(b_addr) "vbroadcastf128 16("#b_addr"),%%ymm3; vfmadd231pd %%ymm1,%%ymm3,%%ymm6; vfmadd231pd %%ymm2,%%ymm3,%%ymm7;"
 #define KERNEL_k1m4n4(b_addr) KERNEL_h_k1m4n4(b_addr) "addq $32,"#b_addr";"
 #define unit_kernel_k1m4n4(c1,c2,c3,c4,...) \
-    "vbroadcastf32x4  ("#__VA_ARGS__"),%%ymm3; vfmadd231pd %%ymm1,%%ymm3,"#c1"; vfmadd231pd %%ymm2,%%ymm3,"#c2";"\
-    "vbroadcastf32x4 16("#__VA_ARGS__"),%%ymm3; vfmadd231pd %%ymm1,%%ymm3,"#c3"; vfmadd231pd %%ymm2,%%ymm3,"#c4";"
+    "vbroadcastf128  ("#__VA_ARGS__"),%%ymm3; vfmadd231pd %%ymm1,%%ymm3,"#c1"; vfmadd231pd %%ymm2,%%ymm3,"#c2";"\
+    "vbroadcastf128 16("#__VA_ARGS__"),%%ymm3; vfmadd231pd %%ymm1,%%ymm3,"#c3"; vfmadd231pd %%ymm2,%%ymm3,"#c4";"
 #define KERNEL_h_k1m4n8(b_addr) KERNEL_h_k1m4n4(b_addr) unit_kernel_k1m4n4(%%ymm8,%%ymm9,%%ymm10,%%ymm11,b_addr,%%r12,1)
 #define KERNEL_k1m4n8(b_addr) KERNEL_h_k1m4n8(b_addr) "addq $32,"#b_addr";"
 #define KERNEL_h_k1m4n12(b_addr) KERNEL_h_k1m4n8(b_addr) unit_kernel_k1m4n4(%%ymm12,%%ymm13,%%ymm14,%%ymm15,b_addr,%%r12,2)
