@@ -1,10 +1,10 @@
-﻿/* %0 = "+r"(a_pointer), %1 = "+r"(b_pointer), %2 = "+r"(c_pointer), %3 = "+r"(ldc_in_bytes), %4 for k_count, %5 for c_store */
+/* %0 = "+r"(a_pointer), %1 = "+r"(b_pointer), %2 = "+r"(c_pointer), %3 = "+r"(ldc_in_bytes), %4 for k_count, %5 for c_store */
 /* r12 = k << 5(const), r13 = k(const), r14 = b_head_pos(const), r15 = %1 + 3r12 */
 
 #include "common.h"
 #include <stdint.h>
 
-//recommended settings: GEMM_Q=128, GEMM_P=512
+//recommended settings: GEMM_Q=168, GEMM_P=384
 
 /* m = 8 */ /* zmm8-zmm31 for accumulators, zmm3-zmm7 for temporary use, zmm0 for alpha, zmm1-zmm2 for control words of permutations */
 #define KERNEL_k1m8n1 \
@@ -61,15 +61,17 @@
 #define COMPUTE_m8(ndim) \
     INIT_m8n##ndim\
     "movq %%r13,%4; movq %%r14,%1; leaq (%1,%%r12,2),%%r15; addq %%r12,%%r15; movq %2,%5;"\
-    "cmpq $28,%4; jb "#ndim"008082f;"\
+    "cmpq $30,%4; jb "#ndim"008082f;"\
     #ndim"008081:\n\t"\
+    KERNEL_k1m8n##ndim\
     KERNEL_k1m8n##ndim\
     KERNEL_k1m8n##ndim\
     "prefetcht1 (%5); prefetcht1 64(%5); prefetcht1 127(%5); addq %3,%5;"\
     KERNEL_k1m8n##ndim\
     KERNEL_k1m8n##ndim\
-    "prefetcht1 (%8); addq $16,%8;"\
-    "subq $4,%4; cmpq $28,%4; jnb "#ndim"008081b;"\
+    KERNEL_k1m8n##ndim\
+    "prefetcht1 (%8); addq $32,%8;"\
+    "subq $6,%4; cmpq $30,%4; jnb "#ndim"008081b;"\
     "movq %2,%5;"\
     #ndim"008082:\n\t"\
     "testq %4,%4; jz "#ndim"008083f;"\
@@ -151,7 +153,6 @@
 #define COMPUTE_m4_n20 COMPUTE_L_m4(12,33633) COMPUTE_R_m4(8,33933)
 #define COMPUTE_m4_n24 COMPUTE_L_m4(12,33533) COMPUTE_R_m4(12,33933)
 #define COMPUTE_m4(ndim) COMPUTE_m4_n##ndim
-
 /* m = 2 *//* vmm0 for alpha, vmm1-vmm3 for temporary use, vmm4-vmm15 for accumulators */
 #define KERNEL_k1m2n1 \
     "vmovupd (%0),%%xmm1; addq $16,%0;"\
@@ -218,7 +219,6 @@
     "decq %4; jmp "#ndim"002022b;"\
     #ndim"002023:\n\t"\
     SAVE_m2(ndim)
-
 /* m = 1 *//* vmm0 for alpha, vmm1-vmm3 and vmm10-vmm15 for temporary use, vmm4-vmm9 for accumulators */
 #define KERNEL_k1m1n1 \
     "vmovsd (%0),%%xmm1; addq $8,%0;"\
@@ -306,7 +306,6 @@
     "cc","memory");\
     a_pointer -= M * K; b_pointer += ndim * K; c_pointer += 2*(LDC * ndim - M);\
 }
-
 int __attribute__ ((noinline))
 CNAME(BLASLONG m, BLASLONG n, BLASLONG k, double alphar, double alphai, double * __restrict__ A, double * __restrict__ B, double * __restrict__ C, BLASLONG LDC)
 {
