@@ -1,6 +1,5 @@
 //gcc -march=skylake-avx512 --shared -fPIC -O2 kernel_avx512_opt8x8.c -o DGEMMv1.so
 
-
 # include <stdio.h>
 # include <stdlib.h>
 # include <immintrin.h>
@@ -88,15 +87,17 @@
     #nn"00:\n\t"
 
 #define INNER_KERNELm8(nn) \
-    "movq %3,%10;cmpq $16,%2;jb "#nn"001f;"\
+    "movq %3,%10;cmpq $18,%2;jb "#nn"001f;"\
     #nn"008:\n\t"\
+    INNER_KERNEL_k1m8n##nn "addq $64,%1;"\
     INNER_KERNEL_k1m8n##nn "addq $64,%1;"\
     INNER_KERNEL_k1m8n##nn "addq $64,%1;"\
     "prefetcht1 (%10); prefetcht1 63(%10); addq %4,%10;"\
     INNER_KERNEL_k1m8n##nn "addq $64,%1;"\
     INNER_KERNEL_k1m8n##nn "addq $64,%1;"\
-    "prefetcht1 (%11); addq $16,%11;"\
-    "subq $4,%2;cmpq $16,%2;jnb "#nn"008b;"\
+    INNER_KERNEL_k1m8n##nn "addq $64,%1;"\
+    "prefetcht1 (%11); addq $32,%11;"\
+    "subq $6,%2;cmpq $18,%2;jnb "#nn"008b;"\
     "movq %3,%10;"\
     #nn"001:\n\t"\
     "cmpq $1,%2;jb "#nn"000f;"\
@@ -813,8 +814,8 @@ static void dgemm_ncopy_8(double *src, double *dst, BLASLONG lead_dim, BLASLONG 
       }
     }
 }
-#define BLOCKDIM_K 128 //GEMM_Q in OpenBLAS
-#define BLOCKDIM_M 512 //GEMM_P in OpenBLAS
+#define BLOCKDIM_K 168 //GEMM_Q in OpenBLAS
+#define BLOCKDIM_M 384 //GEMM_P in OpenBLAS
 #define NOTRANSA ((*transa)=='N'||(*transa)=='n')
 #define NOTRANSB ((*transb)=='N'||(*transb)=='n')
 void dgemm_(char *transa,char *transb,BLASLONG *m,BLASLONG *n,BLASLONG *k,double *alpha,double *a,BLASLONG *lda,double *b,BLASLONG *ldb,double *beta,double *c,BLASLONG *ldc){
