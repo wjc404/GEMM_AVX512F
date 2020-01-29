@@ -14,7 +14,7 @@
 #define KERNEL_k1m16n4 KERNEL_h_k1m16n4 "addq $16,%1;"
 #define KERNEL_k1m16n6 KERNEL_h_k1m16n4 unit_acc_m16n2(16,17,18,19,%1,%%r12,2) "addq $16,%1;"
 #define KERNEL_h_k1m16n8 KERNEL_k1m16n6 "prefetcht0 448(%0);" unit_acc_m16n2(20,21,22,23,%%r15)
-#define KERNEL_k1m16n8 KERNEL_h_k1m16n8 "addq $16,%1;"
+#define KERNEL_k1m16n8 KERNEL_h_k1m16n8 "addq $16,%%r15;"
 #define KERNEL_h_k1m16n10 KERNEL_h_k1m16n8 unit_acc_m16n2(24,25,26,27,%%r15,%%r12,1)
 #define KERNEL_k1m16n10 KERNEL_h_k1m16n10 "addq $16,%%r15;"
 #define KERNEL_h_k1m16n12 KERNEL_h_k1m16n10 unit_acc_m16n2(28,29,30,31,%%r15,%%r12,2)
