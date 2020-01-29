@@ -1,7 +1,7 @@
 
 //16x2
 #define KERNEL_h_k1m16n1 \
-  "vmovupd (%0),%%zmm1; vmovupd 64(%0),%%zmm2; prefetcht0 512(%0); addq $128,%0;"\
+  "vmovupd (%0),%%zmm1; vmovupd 64(%0),%%zmm2; addq $128,%0;"\
   "vbroadcastsd (%1),%%zmm3; vfmadd231pd %%zmm1,%%zmm3,%%zmm8; vfmadd231pd %%zmm2,%%zmm3,%%zmm9;"
 #define KERNEL_k1m16n1 KERNEL_h_k1m16n1 "addq $8,%1;"
 #define KERNEL_h_k1m16n2 KERNEL_h_k1m16n1\
@@ -10,10 +10,10 @@
 #define unit_acc_m16n2(c1_no,c2_no,c3_no,c4_no,...)\
   "vbroadcastsd ("#__VA_ARGS__"),%%zmm3; vfmadd231pd %%zmm1,%%zmm3,%%zmm"#c1_no"; vfmadd231pd %%zmm2,%%zmm3,%%zmm"#c2_no";"\
   "vbroadcastsd 8("#__VA_ARGS__"),%%zmm4; vfmadd231pd %%zmm1,%%zmm4,%%zmm"#c3_no"; vfmadd231pd %%zmm2,%%zmm4,%%zmm"#c4_no";"
-#define KERNEL_h_k1m16n4 KERNEL_h_k1m16n2 unit_acc_m16n2(12,13,14,15,%1,%%r12,1)
+#define KERNEL_h_k1m16n4 KERNEL_h_k1m16n2 "prefetcht0 384(%0);" unit_acc_m16n2(12,13,14,15,%1,%%r12,1)
 #define KERNEL_k1m16n4 KERNEL_h_k1m16n4 "addq $16,%1;"
 #define KERNEL_k1m16n6 KERNEL_h_k1m16n4 unit_acc_m16n2(16,17,18,19,%1,%%r12,2) "addq $16,%1;"
-#define KERNEL_h_k1m16n8 KERNEL_k1m16n6 unit_acc_m16n2(20,21,22,23,%%r15)
+#define KERNEL_h_k1m16n8 KERNEL_k1m16n6 "prefetcht0 448(%0);" unit_acc_m16n2(20,21,22,23,%%r15)
 #define KERNEL_k1m16n8 KERNEL_h_k1m16n8 "addq $16,%1;"
 #define KERNEL_h_k1m16n10 KERNEL_h_k1m16n8 unit_acc_m16n2(24,25,26,27,%%r15,%%r12,1)
 #define KERNEL_k1m16n10 KERNEL_h_k1m16n10 "addq $16,%%r15;"
