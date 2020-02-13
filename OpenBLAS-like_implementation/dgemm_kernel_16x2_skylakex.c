@@ -213,6 +213,7 @@
   KERNEL_k1m16n12 "addq %4,%3; decq %5;jnz 7167125b;"\
   "7167129:\n\t"\
   "prefetcht0 (%%r14);" SAVE_m16n12
+
 #define COMPUTE(ndim) {\
   b_pref = b_ptr + ndim * K;\
   __asm__ __volatile__(\
@@ -239,7 +240,6 @@
     "zmm16","zmm17","zmm18","zmm19","zmm20","zmm21","zmm22","zmm23","zmm24","zmm25","zmm26","zmm27","zmm28","zmm29","zmm30","zmm31");\
   a_ptr -= M * K; b_ptr += ndim * K; c_ptr += ndim * ldc - M;\
 }
-
 //#include "common.h"
 #include <stdint.h>
 #include <stdio.h>//debug
@@ -262,7 +262,6 @@ CNAME(BLASLONG m, BLASLONG n, BLASLONG k, double alpha, double * __restrict__ A,
     if(n_count>0) COMPUTE(1)
     return 0;
 }
-
 /* test zone */
 static void dgemm_tcopy_2(double *src, double *dst, BLASLONG lead_dim, BLASLONG dim_first, BLASLONG dim_second){
 //src_leading_dim parallel with dst_tile_leading_dim
@@ -415,36 +414,136 @@ static void SCALE_MULT(double *dat,double *sca, BLASLONG lead_dim, BLASLONG dim_
       current_dat += lead_dim - dim_first;
     }
 }
-#define BLOCKDIM_K 320 //GEMM_Q in OpenBLAS
-#define BLOCKDIM_M 320 //GEMM_P in OpenBLAS
-#define NOTRANSA ((*transa)=='N'||(*transa)=='n')
-#define NOTRANSB ((*transb)=='N'||(*transb)=='n')
-//gcc-8 -march=skylake-avx512 --shared -fPIC -O2 dgemm_kernel_16x2_skylakex.c -o dgemm_16x2.so
-void dgemm_(char *transa,char *transb,BLASLONG *m,BLASLONG *n,BLASLONG *k,double *alpha,double *a,BLASLONG *lda,double *b,BLASLONG *ldb,double *beta,double *c,BLASLONG *ldc){
-    if((*m)==0||(*n)==0) return;
-    if((*beta)!=1.0) SCALE_MULT(c,beta,*ldc,*m,*n);
-    if((*alpha)==0.0||(*k)==0) return;
-/* start main calculation here */
-    double *b_buffer = (double *)aligned_alloc(64,BLOCKDIM_K*(*n)*sizeof(double));
-    double *a_buffer = (double *)aligned_alloc(4096,BLOCKDIM_K*BLOCKDIM_M*sizeof(double));
-    double *a_current_pos,*b_current_pos;
-    BLASLONG m_count,n_count,k_count,k_subdim,m_subdim;
-    b_current_pos = b;
-    for(k_count=0;k_count<(*k);k_count+=BLOCKDIM_K){
-      k_subdim = (*k)-k_count;
-      if(k_subdim > BLOCKDIM_K) k_subdim = BLOCKDIM_K;
-      if(NOTRANSB) { dgemm_ncopy_2(b_current_pos,b_buffer,*ldb,k_subdim,*n); b_current_pos += BLOCKDIM_K; }
-      else { dgemm_tcopy_2(b_current_pos,b_buffer,*ldb,*n,k_subdim); b_current_pos += (int64_t)(*ldb) * BLOCKDIM_K; }
-      if(NOTRANSA) a_current_pos = a + (int64_t)k_count * (int64_t)(*lda);
-      else a_current_pos = a + k_count;
-      for(m_count=0;m_count<(*m);m_count+=BLOCKDIM_M){
-        m_subdim = (*m)-m_count;
-        if(m_subdim > BLOCKDIM_M) m_subdim = BLOCKDIM_M;
-        if(NOTRANSA) { dgemm_tcopy_16(a_current_pos,a_buffer,*lda,m_subdim,k_subdim); a_current_pos += BLOCKDIM_M; }
-        else { dgemm_ncopy_16(a_current_pos,a_buffer,*lda,k_subdim,m_subdim); a_current_pos += (int64_t)(*lda) * BLOCKDIM_M; }
-        CNAME(m_subdim,*n,k_subdim,*alpha,a_buffer,b_buffer,c+m_count,*ldc);
+
+
+#define GEMM_KERNEL(m_from,m_dim,n_from,n_dim,k_dim,alpha,sa,sb,C,ldc) CNAME(m_dim,n_dim,k_dim,*(alpha),sa,sb,(C)+(int64_t)(*(ldc))*(int64_t)(n_from)+(m_from),*(ldc))
+#define GEMM_BETA(C,ldc,beta,m,n) SCALE_MULT(C,beta,*(ldc),*(m),*(n))
+static void GEMM_ICOPY(int m_from,int m_dim,int k_from,int k_dim,double *A,int *lda,char *transa,double *sa){
+  if((*transa)=='N' || (*transa)=='n') dgemm_tcopy_16(A+(int64_t)(*lda)*(int64_t)k_from+m_from,sa,*lda,m_dim,k_dim);
+  else dgemm_ncopy_16(A+(int64_t)(*lda)*(int64_t)m_from+k_from,sa,*lda,k_dim,m_dim);
+}
+static void GEMM_OCOPY(int k_from,int k_dim,int n_from,int n_dim,double *B,int *ldb,char *transb,double *sb){
+  if((*transb)=='N' || (*transb)=='n') dgemm_ncopy_2(B+(int64_t)(*ldb)*(int64_t)n_from+k_from,sb,*ldb,k_dim,n_dim);
+  else dgemm_tcopy_2(B+(int64_t)(*ldb)*(int64_t)k_from+n_from,sb,*ldb,n_dim,k_dim);
+}
+#include <omp.h>
+#define MIN_N 12 //determined by registers
+#define MAX_N 360 //limited by l3 stride
+#define MAX_M 192 //limited by l2
+#define MAX_K 384 //limited by l1
+static void sync_proc(int nthreads, int mypos, int *t_sync){
+  __asm__ __volatile__("mfence":::"memory");
+  int vipos, proclocal, wait;
+  t_sync[mypos] ++; proclocal = t_sync[mypos];
+  do{
+    wait=0;
+    for(vipos=0;(vipos<nthreads && wait==0);vipos++){
+      if(t_sync[vipos]<proclocal) wait=1;
+    }
+    __asm__ __volatile__("mfence":::"memory");
+  }while(wait);
+}
+void serial_dgemm(char *transa,char *transb,int *m,int *n,int *k,double *alpha,double *A,int *lda,double *B,int *ldb,double *beta,double *C,int *ldc){
+  if((*m)==0 || (*n)==0) return;
+  if((*beta) != 1.0) GEMM_BETA(C,ldc,beta,m,n);
+  if((*alpha) == 0.0 || (*k) == 0) return;
+  double *b_buffer = (double *)aligned_alloc(64,(*n)*MAX_K*sizeof(double));
+  double *pack_a = (double *)aligned_alloc(64,MAX_K*MAX_M*sizeof(double));
+  int l,min_l,i,min_i,jj,min_jj;
+  for(l=0;l<(*k);l+=min_l){
+    min_l = (*k) - l;
+    if(min_l>MAX_K) min_l = MAX_K;
+    for(i=0;i<(*m);i+=min_i){
+      min_i = (*m) - i;
+      if(min_i>MAX_M) min_i = MAX_M;
+      GEMM_ICOPY(i,min_i,l,min_l,A,lda,transa,pack_a);
+      if(i==0){
+        for(jj=0;jj<(*n);jj+=min_jj){
+          min_jj = (*n) - jj;
+          if(min_jj>MIN_N) min_jj = MIN_N;
+          GEMM_OCOPY(l,min_l,jj,min_jj,B,ldb,transb,b_buffer+jj*min_l);
+          GEMM_KERNEL(i,min_i,jj,min_jj,min_l,alpha,pack_a,b_buffer+jj*min_l,C,ldc);
+        }
+      }
+      else{
+        GEMM_KERNEL(i,min_i,0,(*n),min_l,alpha,pack_a,b_buffer,C,ldc);
       }
     }
-    free(a_buffer);a_buffer=NULL;
-    free(b_buffer);b_buffer=NULL;
+  }
+  free(pack_a); pack_a=NULL;
+  free(b_buffer); b_buffer=NULL;
+}
+void dgemm_(char *transa,char *transb,int *m,int *n,int *k,double *alpha,double *A,int *lda,double *B,int *ldb,double *beta,double *C,int *ldc){
+  if((*m)==0 || (*n)==0) return; int m_input = *m;
+  int nthreads = omp_get_max_threads(); int count;
+  if(nthreads>m_input/16) nthreads=m_input/16;
+  if(nthreads<=1) {serial_dgemm(transa,transb,m,n,k,alpha,A,lda,B,ldb,beta,C,ldc); return;}
+  if((*beta) != 1.0) GEMM_BETA(C,ldc,beta,m,n);
+  if((*alpha) == 0.0 || (*k) == 0) return;
+  int *m_divide = (int *)malloc((nthreads+1)*sizeof(int));
+  int *n_divide = (int *)malloc((nthreads+1)*sizeof(int));
+  int *t_sync = (int *)calloc(nthreads,sizeof(int));
+  int m_run = (m_input/nthreads-1)/MAX_M+1;
+  for(count=0;count<=nthreads;count++) m_divide[count] = count * m_input / nthreads;
+  double *b_buffer = (double *)aligned_alloc(64,(*n)*MAX_K*sizeof(double));
+#pragma omp parallel
+  {
+    double *pack_a = (double *)aligned_alloc(64,MAX_K*MAX_M*sizeof(double)*2);
+    int mypos = omp_get_thread_num();
+    int m_from = m_divide[mypos], m_to = m_divide[mypos+1];
+    int l,min_l,i,min_i,jj,min_jj,cnt,width,vipos,mct;
+    for(l=0;l<(*k);l+=min_l){
+      min_l = (*k) - l;
+      if(min_l>MAX_K) min_l = MAX_K;
+      i=m_from;
+      for(mct=0;mct<m_run;mct++){
+        min_i = m_to - i;
+        if(min_i>MAX_M && mct<m_run-2) min_i = MAX_M;
+        else if(mct==m_run-2) min_i = min_i / 2;
+        sync_proc(nthreads,mypos,t_sync);
+        GEMM_ICOPY(i,min_i,l,min_l,A,lda,transa,pack_a);
+        if(mypos==0) n_divide[nthreads] = 0;
+        sync_proc(nthreads,mypos,t_sync);
+        //wait if there's one t_sync[pos] behind you; inc t_sync[mypos];
+        for(;n_divide[nthreads]<(*n);){
+          sync_proc(nthreads,mypos,t_sync);
+          if(mypos==0){//distribute tasks to threads
+            width = ((*n)-n_divide[nthreads])/nthreads;
+            if(width>MAX_N) width = MAX_N;
+            n_divide[0] = n_divide[nthreads];
+            for(cnt=1;cnt<=nthreads;cnt++)
+              n_divide[cnt] = n_divide[cnt-1]+width;
+            if(width<MIN_N)
+              for(cnt=1;cnt<=nthreads;cnt++)
+                n_divide[cnt] = n_divide[0]+cnt*((*n)-n_divide[0])/nthreads;
+          }
+          sync_proc(nthreads,mypos,t_sync);
+          if(i==m_from){
+            for(jj=n_divide[mypos];jj<n_divide[mypos+1];jj+=min_jj){
+              min_jj = n_divide[mypos+1]-jj;
+              if(min_jj>MIN_N) min_jj = MIN_N;
+              GEMM_OCOPY(l,min_l,jj,min_jj,B,ldb,transb,b_buffer+jj*min_l);
+              GEMM_KERNEL(i,min_i,jj,min_jj,min_l,alpha,pack_a,b_buffer+jj*min_l,C,ldc);
+            }
+            sync_proc(nthreads,mypos,t_sync);
+          }
+          else{
+            GEMM_KERNEL(i,min_i,n_divide[mypos],n_divide[mypos+1]-n_divide[mypos],min_l,
+            alpha,pack_a,b_buffer+n_divide[mypos]*min_l,C,ldc);
+          }
+          for(vipos=(mypos+1)%nthreads;vipos!=mypos;vipos=(vipos+1)%nthreads){
+            GEMM_KERNEL(i,min_i,n_divide[vipos],n_divide[vipos+1]-n_divide[vipos],min_l,
+            alpha,pack_a,b_buffer+n_divide[vipos]*min_l,C,ldc);
+          }
+        }//loop n
+        i += min_i;
+      }//loop m
+      sync_proc(nthreads,mypos,t_sync);
+    }//loop k
+    free(pack_a); pack_a = NULL;
+  }
+  free(b_buffer); b_buffer = NULL;
+  free(t_sync); t_sync = NULL;
+  free(n_divide); n_divide = NULL;
+  free(m_divide); m_divide = NULL;
 }
