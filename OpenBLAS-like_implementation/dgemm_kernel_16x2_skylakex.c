@@ -509,11 +509,11 @@ void dgemm_(char *transa,char *transb,int *m,int *n,int *k,double *alpha,double 
           sync_proc(nthreads,mypos,t_sync);
           if(mypos==0){//distribute tasks to threads
             width = ((*n)-n_divide[nthreads])/nthreads;
-            if(width>MAX_N) width = MAX_N;
             n_divide[0] = n_divide[nthreads];
-            for(cnt=1;cnt<=nthreads;cnt++)
-              n_divide[cnt] = n_divide[cnt-1]+width;
-            if(width<MIN_N)
+            if(width>3*MAX_N/2)
+              for(cnt=1;cnt<=nthreads;cnt++)
+                n_divide[cnt] = n_divide[cnt-1]+MAX_N;
+            else
               for(cnt=1;cnt<=nthreads;cnt++)
                 n_divide[cnt] = n_divide[0]+cnt*((*n)-n_divide[0])/nthreads;
           }
