@@ -203,7 +203,7 @@
   "7167121:\n\t"\
   KERNEL_k1m16n12 "addq $4,%5; testq $12,%5; movq $172,%%r10; cmovz %4,%%r10;"\
   KERNEL_k1m16n12 "prefetcht1 (%3); subq $129,%3; addq %%r10,%3;"\
-  KERNEL_k1m16n12 "prefetcht1 (%6); addq $32,%6;"\
+  KERNEL_k1m16n12 "prefetcht1 (%6); addq $32,%6; cmpq $208,%5; cmoveq %2,%3;"\
   KERNEL_k1m16n12 "cmpq %5,%%r13; jnb 7167121b;"\
   "movq %2,%3; negq %5; leaq 16(%%r13,%5,1),%5;"\
   "7167123:\n\t"\
