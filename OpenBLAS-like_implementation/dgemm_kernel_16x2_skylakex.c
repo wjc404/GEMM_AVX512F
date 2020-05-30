@@ -523,7 +523,7 @@ void dgemm_(char *transa,char *transb,int *m,int *n,int *k,double *alpha,double 
 	  sync_proc(nthreads,tid,t_sync);
 	  while(get_gemm_task(&task_end,&m_start,&n_start,&m_end,&n_end,m_count,n_count,m_count+m_inc,n_count+n_inc)){
             if(k_count == 0 && BETA != 1.0) GEMM_BETA(C+n_start*LDC+m_start,LDC,BETA,m_end-m_start,n_end-n_start);
-            GEMM_KERNEL(m_start,m_end-m_start,n_start,n_end-n_start,k_inc,ALPHA,sa+(m_start-m_count)*k_inc,sb+(n_start-n_count)*k_inc,C,LDC);
+            if(ALPHA != 0.0) GEMM_KERNEL(m_start,m_end-m_start,n_start,n_end-n_start,k_inc,ALPHA,sa+(m_start-m_count)*k_inc,sb+(n_start-n_count)*k_inc,C,LDC);
           }
         }
       }
