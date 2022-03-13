@@ -45,6 +45,17 @@
 .endm
 
 /**************************************************************************
+ * register usage for DTRSM_SOLVE_MxNy_L[N/T] macros:
+ * input registers: pointer_a, pointer_b, pointer_c,
+      (ldb_bytes), (ldc_bytes)
+ * ISA: avx512f for x >= 8 && y >= 2 and also M4N2, avx2 for the rest.
+ * temporary registers: r10 for all, ymm0-3 for avx2 routines,
+ *    zmm0-7 and k2-k3 for avx512f routines.
+ * accumulation registers: ymm4-15 for avx2 routines,
+ *    zmm8-31 for avx512f routines.
+ *    (must be identical to R solvers and kernels)
+ *************************************************************************/
+/**************************************************************************
  * Here enter the dtrsm_l_m8n4 zone.
  * Macros here are specially for dtrsm_l[n/t]_m[8/16]n[4/8/12] solvers
  *************************************************************************/
